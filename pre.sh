@@ -1,9 +1,13 @@
 # exit on error
 set -e
 
-while getopts "gd:" opt; do
+while getopts "sg:t:" opt; do
   case ${opt} in
+    s )
+      skip_app_creation="true"
+      ;;
     t ) 
+      orig_tenant=$(az account  show --query tenantId -o tsv)
       AAD_INTEGRATED_TENANT=$OPTARG
       ;;
     g ) 
@@ -30,9 +34,10 @@ fi
 # check nameing
 # https://docs.microsoft.com/en-us/azure/architecture/best-practices/naming-conventions#containers
 
-if [  "$AAD_INTEGRATED_TENANT" ]; then
+if [  "$orig_tenant" ]; then
     echo "You have selected an alternative tenent for cluster RBAC users, you will need to auth so we can create the required Apps, press ENTER to continue.."
     read
+    
     az login --tenant $AAD_INTEGRATED_TENANT  --allow-no-subscriptions >/dev/null
 else
     AAD_INTEGRATED_TENANT=$(az account show --query tenantId --output tsv)
@@ -68,26 +73,29 @@ echo "Created/Patched [${ADSERVER_APP}], appId: ${serverAppId}"
 az ad app update --id $serverAppId --set groupMembershipClaims=All >/dev/null
 
 
-# Now create a service principal for the server app (specific to granting permissions to resources in this tenant)
-# Create a service principal for the Azure AD application
-echo "Create a service principal for the app...."
-az ad sp create --id $serverAppId >/dev/null
+if [ ! "$skip_app_creation" ] ; then
+    # Now create a service principal for the server app (specific to granting permissions to resources in this tenant)
+    # Create a service principal for the Azure AD application
+    echo "Create a service principal for the app...."
+    az ad sp create --id $serverAppId >/dev/null
+fi
 
-# Get the service principal secret
 serverAppSecret=$(az ad sp credential reset --name $serverAppId --credential-description "AKSPassword" --query password -o tsv)
-echo "[${ADSERVER_APP}] secret: ${serverAppSecret}"
+echo "DEBUG : [${ADSERVER_APP}] secret: ${serverAppSecret}"
 
-echo "Adding directory permissions for Delegate & Applicaion to Directory.Read.All..."
-az ad app permission add \
-    --id $serverAppId \
-    --api 00000003-0000-0000-c000-000000000000 \
-    --api-permissions e1fe6dd8-ba31-4d61-89e7-88639da4683d=Scope 06da0dbc-49e2-44d2-8312-53f166ab848a=Scope 7ab1d382-f21e-4acd-a863-ba3e13f7da61=Role
+if [ ! "$skip_app_creation" ] ; then
+    # Get the service principal secret
+    echo "Adding directory permissions for Delegate & Applicaion to Directory.Read.All..."
+    az ad app permission add \
+        --id $serverAppId \
+        --api 00000003-0000-0000-c000-000000000000 \
+        --api-permissions e1fe6dd8-ba31-4d61-89e7-88639da4683d=Scope 06da0dbc-49e2-44d2-8312-53f166ab848a=Scope 7ab1d382-f21e-4acd-a863-ba3e13f7da61=Role
 
-echo "Granting permissions..."
-az ad app permission grant --id $serverAppId --api 00000003-0000-0000-c000-000000000000 >/dev/null
-echo "Granting permissions ADMIN-consent..."
-az ad app permission admin-consent --id  $serverAppId >/dev/null
-
+    echo "Granting permissions..."
+    az ad app permission grant --id $serverAppId --api 00000003-0000-0000-c000-000000000000 >/dev/null
+    echo "Granting permissions ADMIN-consent..."
+    az ad app permission admin-consent --id  $serverAppId >/dev/null
+fi
 
 #  Create the client application
 #  Used when a user logon interactivlty to the AKS cluster with the Kubernetes CLI (kubectl)
@@ -95,41 +103,67 @@ echo "\nCreating Client app [${ADCLIENT_APP}]..."
 clientAppId=$(az ad app create  --display-name $ADCLIENT_APP --native-app --reply-urls "https://${ADCLIENT_APP}" --query appId -o tsv)
 echo "Created/Patched ${ADCLIENT_APP}, AppId: ${clientAppId}"
 
-echo "Create a service principal for the app...."
-az ad sp create --id $clientAppId >/dev/null
 
-echo "Retreive the app outh permission id...."
-oAuthPermissionId=$(az ad app show --id $serverAppId --query "oauth2Permissions[0].id" -o tsv)
+if [ ! "$skip_app_creation" ] ; then
+    echo "Create a service principal for the app...."
+    az ad sp create --id $clientAppId >/dev/null
 
-echo "Adding the app permission....[${oAuthPermissionId}=Scope]"
-az ad app permission add \
-    --id $clientAppId \
-    --api $serverAppId \
-    --api-permissions ${oAuthPermissionId}=Scope
+    echo "Retreive the app outh permission id...."
+    oAuthPermissionId=$(az ad app show --id $serverAppId --query "oauth2Permissions[0].id" -o tsv)
 
-echo "Granting permissions..."
-az ad app permission grant --id $clientAppId --api $serverAppId >/dev/null
+    echo "Adding the app permission....[${oAuthPermissionId}=Scope]"
+    az ad app permission add \
+        --id $clientAppId \
+        --api $serverAppId \
+        --api-permissions ${oAuthPermissionId}=Scope
 
-echo "Changing back to defalt tenant to create Cluster"
-az login
+    echo "Granting permissions..."
+    az ad app permission grant --id $clientAppId --api $serverAppId >/dev/null
+fi
+
+if [  "$orig_tenant" ]; then
+    echo "Changing back to defalt tenant [${orig_tenant}] to create Cluster"
+    az login --tenant $orig_tenant >/dev/null
+fi
 
 # https://docs.microsoft.com/en-us/azure/aks/kubernetes-walkthrough-rm-template#create-a-service-principal
-echo "Create Service Principle for AKS to manage Azure Resources..."
+echo "Create Service Principle for AKS to manage Azure Resources [http://${CLUSTER_NAME}-sp]..."
 AKS_SP=$(az ad sp create-for-rbac -n  "http://${CLUSTER_NAME}-sp" --skip-assignment  --query "[appId,password]" -o tsv)
+echo "DEBUG: ${AKS_SP}"
+
+# Can check this SPN can login using : az login --service-principal -u http://<>-sp --tenant <>
+
 AKS_SP_APPID=$(echo $AKS_SP | cut -f 1 -d ' ')
 AKS_SP_SECRET=$(echo $AKS_SP | cut -f 2 -d ' ')
 
+echo "Created SPN appId: ${AKS_SP_APPID}"
 AKS_SP_OBJECTID=$(az ad sp show --id $AKS_SP_APPID --query objectId -o tsv)
 
-az group create -l westeurope -n $CLUSTER_NAME
+echo "Creating CLuster... with \n
+az group deployment create -g $CLUSTER_NAME \
+    --template-file ./azuredeploy.json \
+    --parameters \
+        resourceName=\"${CLUSTER_NAME}\" \
+        dnsPrefix=\"${CLUSTER_NAME}\" \
+        aksServicePrincipalObjectId=\"${AKS_SP_OBJECTID}\" \
+        aksServicePrincipalClientId=\"${AKS_SP_APPID}\" \
+        aksServicePrincipalClientSecret=\"${AKS_SP_SECRET}\" \
+        AAD_TenantID=\"${AAD_INTEGRATED_TENANT}\" \
+        AAD_ServerAppID=\"${serverAppId}\" \
+        AAD_ServerAppSecret=\"${serverAppSecret}\" \
+        AAD_ClientAppID=\"${clientAppId}\"
+"
+
+az group create -l westeurope -n $CLUSTER_NAME >/dev/null
+
 az group deployment create -g $CLUSTER_NAME \
     --template-file ./azuredeploy.json \
     --parameters \
         resourceName="${CLUSTER_NAME}" \
         dnsPrefix="${CLUSTER_NAME}" \
-        existingServicePrincipalObjectId="${AKS_SP_OBJECTID}" \
-        existingServicePrincipalClientId="${AKS_SP_APPID}" \
-        existingServicePrincipalClientSecret="${AKS_SP_SECRET}" \
+        aksServicePrincipalObjectId="${AKS_SP_OBJECTID}" \
+        aksServicePrincipalClientId="${AKS_SP_APPID}" \
+        aksServicePrincipalClientSecret="${AKS_SP_SECRET}" \
         AAD_TenantID="${AAD_INTEGRATED_TENANT}" \
         AAD_ServerAppID="${serverAppId}" \
         AAD_ServerAppSecret="${serverAppSecret}" \
