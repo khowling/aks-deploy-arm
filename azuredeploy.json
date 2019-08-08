@@ -24,7 +24,7 @@
             }
         },
         "osDiskSizeGB": {
-            "defaultValue": 500,
+            "defaultValue": 0,
             "minValue": 0,
             "maxValue": 1023,
             "type": "int",
@@ -33,7 +33,7 @@
             }
         },
         "agentCount": {
-            "defaultValue": 3,
+            "defaultValue": 2,
             "minValue": 1,
             "maxValue": 50,
             "type": "int",
@@ -42,7 +42,7 @@
             }
         },
         "agentVMSize": {
-            "defaultValue": "Standard_D2_v2",
+            "defaultValue": "Standard_D2s_v3",
             "type": "string",
             "metadata": {
                 "description": "The size of the Virtual Machine."
@@ -66,18 +66,8 @@
                 "description": "The Service Principal Client Secret."
             }
         },
-        "osType": {
-            "defaultValue": "Linux",
-            "allowedValues": [
-                "Linux"
-            ],
-            "type": "string",
-            "metadata": {
-                "description": "The type of operating system."
-            }
-        },
         "kubernetesVersion": {
-            "defaultValue": "1.12.8",
+            "defaultValue": "1.13.7",
             "type": "string",
             "metadata": {
                 "description": "The version of Kubernetes."
@@ -102,7 +92,7 @@
             }
         },
         "maxPods": {
-            "defaultValue": 30,
+            "defaultValue": 120,
             "type": "int",
             "metadata": {
                 "description": "Maximum number of pods that can run on a node."
@@ -191,23 +181,60 @@
             "metadata": {
                 "description": "The sku of the Application Gateway. Default: WAF_v2 (Detection mode). In order to further customize WAF, use azure portal or cli."
             }
+        },
+        "acrSku": {
+            "type": "string",
+            "defaultValue": "Basic"
+        },
+        "acrAdminUserEnabled": {
+            "type": "bool",
+            "defaultValue": false
         }
     }, 
     "variables": {
+        "acrName": "[concat('acr', replace(parameters('resourceName'),'-', ''))]",
         "vnetName": "[concat('vnet-', parameters('resourceName'))]",
-        "applicationGatewayName": "[concat('appgw-', parameters('resourceName'))]",
-        "applicationGatewayPublicIpName": "[concat('appgw-ip-', parameters('resourceName'))]",
+        "workspaceName": "[concat('workspace-', parameters('resourceName'))]",
         "vnetAksSubnetName": "aks-nodes",
         "vnetAppGatewaySubnetName": "ingress",
+        "msiIdentityName": "[concat('appgwManagedIdentity' , replace(parameters('resourceName'),'-', ''))]",
+        "msiIdentityId": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('msiIdentityName'))]",
+        "applicationGatewayName": "[concat('appgw-', parameters('resourceName'))]",
+        "applicationGatewayPublicIpName": "[concat('appgw-ip-', parameters('resourceName'))]",
         "webApplicationFirewallConfiguration": {
             "enabled": "true",
             "firewallMode": "Detection"
         },
+        "readerRole": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', 'acdd72a7-3385-48ef-bd42-f606fba81ae7')]",
         "networkContributorRole": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', '4d97b98b-1d4f-4787-a291-c67834d212e7')]",
-        "appGwContributorRole": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]"
-
+        "appGwContributorRole": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+        "AcrPullRole": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', '7f951dda-4ed3-4680-a7ca-43fe172d538d')]",
+        "managedIdentityOperatorRole": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', 'f1a07417-d97a-45cb-824c-7a7467783830')]"
     },
     "resources": [
+        {
+            "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+            "name": "[variables('msiIdentityName')]",
+            "apiVersion": "2018-11-30",
+            "location": "[resourceGroup().location]"
+        },
+        {
+            "name": "[variables('acrName')]",
+            "type": "Microsoft.ContainerRegistry/registries",
+            "apiVersion": "2017-10-01",
+            "location": "[parameters('location')]",
+            "comments": "Container registry for storing docker images",
+            "tags": {
+              "displayName": "Container Registry",
+              "container.registry": "[variables('acrName')]"
+            },
+            "sku": {
+              "name": "[parameters('acrSku')]"
+            },
+            "properties": {
+              "adminUserEnabled": "[parameters('acrAdminUserEnabled')]"
+            }
+        },
         {
             "apiVersion": "2019-04-01",
             "type": "Microsoft.Network/virtualNetworks",
@@ -337,9 +364,17 @@
             ]
         },
         {
+            "type": "Microsoft.OperationalInsights/workspaces",
+            "name": "[variables('workspaceName')]",
+            "apiVersion": "2015-11-01-preview",
+            "location": "[parameters('location')]",
+            "properties": {
+            }
+        },
+        {
             "type": "Microsoft.ContainerService/managedClusters",
             "name": "[parameters('resourceName')]",
-            "apiVersion": "2018-03-31",
+            "apiVersion": "2019-06-01",
             "location": "[parameters('location')]",
             "properties": {
                 "kubernetesVersion": "[parameters('kubernetesVersion')]",
@@ -352,20 +387,29 @@
                     "serverAppSecret": "[parameters('AAD_ServerAppSecret')]"
                 },
                 "addonProfiles": {
-                    "httpApplicationRouting": {
-                        "enabled": "[parameters('enableHttpApplicationRouting')]"
+                    "omsagent": {
+                        "enabled": true,
+                        "config": {
+                            "logAnalyticsWorkspaceResourceID": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('workspaceName'))]"
+                        }
                     }
                 },
                 "agentPoolProfiles": [
                     {
-                        "name": "agentpool",
+                        "name": "nodepool1",
                         "osDiskSizeGB": "[parameters('osDiskSizeGB')]",
                         "count": "[parameters('agentCount')]",
+                        "minCount": "[parameters('agentCount')]",
+                        "maxCount": 5,
                         "vmSize": "[parameters('agentVMSize')]",
-                        "osType": "[parameters('osType')]",
-                        "storageProfile": "ManagedDisks",
+                        "osType": "Linux",
                         "vnetSubnetID": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('vnetAksSubnetName'))]",
-                        "maxPods": "[parameters('maxPods')]"
+                        "maxPods": "[parameters('maxPods')]",
+                        "type": "VirtualMachineScaleSets",
+                        "enableAutoScaling": true,
+                        "availabilityZones": [
+                            "1", "2", "3"
+                          ]
                     }
                 ],
                 "servicePrincipalProfile": {
@@ -373,6 +417,7 @@
                     "secret": "[parameters('aksServicePrincipalClientSecret')]"
                 },
                 "networkProfile": {
+                    "loadBalancerSku": "standard",
                     "networkPlugin": "[parameters('networkPlugin')]",
                     "serviceCidr": "[parameters('serviceCidr')]",
                     "dnsServiceIP": "[parameters('dnsServiceIP')]",
@@ -381,12 +426,13 @@
             },
             "dependsOn": [
                 "[concat('Microsoft.Network/virtualNetworks/', variables('vnetName'))]",
-                "[concat('Microsoft.Resources/deployments/', 'ClusterSubnetRoleAssignmentDeployment')]"
+                "[concat('Microsoft.Resources/deployments/', 'ClusterRoleAssignmentForKubenetesSPN')]",
+                "[concat('Microsoft.OperationalInsights/workspaces/', variables('workspaceName'))]"
             ]
         },
         {
             "type": "Microsoft.Resources/deployments",
-            "name": "ClusterSubnetRoleAssignmentDeployment",
+            "name": "ClusterRoleAssignmentForKubenetesSPN",
             "apiVersion": "2017-05-10",
             "properties": {
                 "mode": "Incremental",
@@ -406,11 +452,22 @@
                             }
                         },
                         {
-                            "type": "Microsoft.Network/applicationgateways/providers/roleAssignments",
+                            "type": "Microsoft.ManagedIdentity/userAssignedIdentities/providers/roleAssignments",
                             "apiVersion": "2017-05-01",
-                            "name": "[concat(variables('applicationGatewayName'), '/Microsoft.Authorization/', guid(resourceGroup().id, 'identityappgwaccess'))]",
+                            "name": "[concat(variables('msiIdentityName'), '/Microsoft.Authorization/', guid(resourceGroup().id, 'aksidentityaccess'))]",
                             "properties": {
-                                "roleDefinitionId": "[variables('appGwContributorRole')]",
+                                "roleDefinitionId": "[variables('managedIdentityOperatorRole')]",
+                                "principalId": "[parameters('aksServicePrincipalObjectId')]",
+                                "scope": "[variables('msiIdentityId')]",
+                                "principalType": "ServicePrincipal"
+                            }
+                        },
+                        {
+                            "type": "Microsoft.ContainerRegistry/registries/providers/roleAssignments",
+                            "apiVersion": "2017-05-01",
+                            "name": "[concat(variables('acrName'), '/Microsoft.Authorization/', guid(resourceGroup().id, 'identityacraccess'))]",
+                            "properties": {
+                                "roleDefinitionId": "[variables('AcrPullRole')]",
                                 "principalId": "[parameters('aksServicePrincipalObjectId')]"
                             }
                         }
@@ -418,15 +475,70 @@
                 }
             },
             "dependsOn": [
+                "[concat('Microsoft.ManagedIdentity/userAssignedIdentities/', variables('msiIdentityName'))]",
                 "[concat('Microsoft.Network/virtualNetworks/', variables('vnetName'))]",
-                "[concat('Microsoft.Network/applicationgateways/', variables('applicationGatewayName'))]"
+                "[concat('Microsoft.ContainerRegistry/registries/', variables('acrName'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Resources/deployments",
+            "name": "ClusterRoleAssignmentDeploymentForMSI",
+            "apiVersion": "2017-05-10",
+            "properties": {
+                "mode": "Incremental",
+                "template": {
+                    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {},
+                    "variables": {},
+                    "resources": [
+                        {
+                            "type": "Microsoft.Network/applicationgateways/providers/roleAssignments",
+                            "apiVersion": "2017-05-01",
+                            "name": "[concat(variables('applicationGatewayName'), '/Microsoft.Authorization/', guid(resourceGroup().id, 'identityappgwaccess'))]",
+                            "properties": {
+                                "roleDefinitionId": "[variables('appGwContributorRole')]",
+                                "principalId": "[reference(variables('msiIdentityId'), '2018-11-30').principalId]",
+                                "scope": "[resourceId('Microsoft.Network/applicationgateways', variables('applicationGatewayName'))]"
+                            }
+                        },
+                        {
+                            "type": "Microsoft.Authorization/roleAssignments",
+                            "apiVersion": "2017-05-01",
+                            "name": "[guid(resourceGroup().id, 'identityrgaccess')]",
+                            "properties": {
+                                "roleDefinitionId": "[variables('readerRole')]",
+                                "principalId": "[reference(variables('msiIdentityId'), '2018-11-30').principalId]",
+                                "scope": "[resourceGroup().id]"
+                            }
+                        }
+                    ]
+                }
+            },
+            "dependsOn": [
+                "[concat('Microsoft.Network/applicationgateways/', variables('applicationGatewayName'))]",
+                "[concat('Microsoft.ManagedIdentity/userAssignedIdentities/', variables('msiIdentityName'))]"
             ]
         }
+       
     ],
     "outputs": {
         "controlPlaneFQDN": {
             "type": "string",
             "value": "[reference(concat('Microsoft.ContainerService/managedClusters/', parameters('resourceName'))).fqdn]"
+        },
+        "applicationGatewayName": {
+            "type": "string",
+            "value": "[variables('applicationGatewayName')]"
+        },
+        "msiIdentityResourceId": {
+            "type": "string",
+            "value": "[variables('msiIdentityId')]"
+        },
+        "msiIdentityClientId": {
+            "type": "string",
+            "value": "[reference(variables('msiIdentityId'), '2018-11-30').clientId]"
         }
+        
     }
 }

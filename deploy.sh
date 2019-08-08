@@ -1,5 +1,5 @@
 # exit on error
-set -e
+#set -e
 
 while getopts "sg:t:" opt; do
   case ${opt} in
@@ -27,7 +27,8 @@ if [ $# -ne 1 ] || [ "$show_usage" ]; then
     echo "Usage: $0 [-t tenentid] [-g resource_group_name] <cluster_name>"
     echo "Optional args:"
     echo " -t: provide an alternative tenant id to secure your aks cluster users (you will need ADMIN rights on the tenant)"
-    echo " -g: provide a resource group name, otherwise it will default to the cluster_name-rg"
+    echo " -g: provide a resource group name, otherwise it will default to the <cluster_name>-rg"
+    echo " -s: this will skip the recreation of the aad apps SPNs, (allowing re-running)"
     exit 1
 fi
 
@@ -43,6 +44,16 @@ else
     AAD_INTEGRATED_TENANT=$(az account show --query tenantId --output tsv)
 fi
 
+# Get the user details to create the kubernetes role assignment
+USER_DETAILS=$(az ad signed-in-user show --query "[objectId,userPrincipalName]" -o tsv)
+
+# Can require either the ObjectId or UPN depending on where the user is homed
+USER_OBJECTID=$(echo $USER_DETAILS | cut -f 1 -d ' ')
+USER_UPN=$(echo $USER_DETAILS | cut -f 2 -d ' ')
+
+
+echo "This is the user we will add to the Kubernetes RBAC objectId: [${USER_OBJECT_ID}]"
+echo "This is the user we will add to the Kubernetes RBAC objectId: [$(az ad  signed-in-user show --query objectId -o tsv)]"
 
 CLUSTER_NAME=${1}
 GROUP=${GROUP:-"${CLUSTER_NAME}-rg"}
@@ -81,7 +92,6 @@ if [ ! "$skip_app_creation" ] ; then
 fi
 
 serverAppSecret=$(az ad sp credential reset --name $serverAppId --credential-description "AKSPassword" --query password -o tsv)
-echo "DEBUG : [${ADSERVER_APP}] secret: ${serverAppSecret}"
 
 if [ ! "$skip_app_creation" ] ; then
     # Get the service principal secret
@@ -99,7 +109,7 @@ fi
 
 #  Create the client application
 #  Used when a user logon interactivlty to the AKS cluster with the Kubernetes CLI (kubectl)
-echo "\nCreating Client app [${ADCLIENT_APP}]..."
+echo "Creating Client app [${ADCLIENT_APP}]..."
 clientAppId=$(az ad app create  --display-name $ADCLIENT_APP --native-app --reply-urls "https://${ADCLIENT_APP}" --query appId -o tsv)
 echo "Created/Patched ${ADCLIENT_APP}, AppId: ${clientAppId}"
 
@@ -127,9 +137,9 @@ if [  "$orig_tenant" ]; then
 fi
 
 # https://docs.microsoft.com/en-us/azure/aks/kubernetes-walkthrough-rm-template#create-a-service-principal
+
 echo "Create Service Principle for AKS to manage Azure Resources [http://${CLUSTER_NAME}-sp]..."
 AKS_SP=$(az ad sp create-for-rbac -n  "http://${CLUSTER_NAME}-sp" --skip-assignment  --query "[appId,password]" -o tsv)
-echo "DEBUG: ${AKS_SP}"
 
 # Can check this SPN can login using : az login --service-principal -u http://<>-sp --tenant <>
 
@@ -139,8 +149,10 @@ AKS_SP_SECRET=$(echo $AKS_SP | cut -f 2 -d ' ')
 echo "Created SPN appId: ${AKS_SP_APPID}"
 AKS_SP_OBJECTID=$(az ad sp show --id $AKS_SP_APPID --query objectId -o tsv)
 
-echo "Creating CLuster... with \n
-az group deployment create -g $CLUSTER_NAME \
+#  for ARM AKS format, see https://docs.microsoft.com/en-us/azure/templates/microsoft.containerservice/2019-02-01/managedclusters
+
+
+echo "[DEBUG] Creating Cluster script: az group deployment create -g $GROUP \
     --template-file ./azuredeploy.json \
     --parameters \
         resourceName=\"${CLUSTER_NAME}\" \
@@ -154,20 +166,105 @@ az group deployment create -g $CLUSTER_NAME \
         AAD_ClientAppID=\"${clientAppId}\"
 "
 
-az group create -l westeurope -n $CLUSTER_NAME >/dev/null
 
-az group deployment create -g $CLUSTER_NAME \
-    --template-file ./azuredeploy.json \
-    --parameters \
-        resourceName="${CLUSTER_NAME}" \
-        dnsPrefix="${CLUSTER_NAME}" \
-        aksServicePrincipalObjectId="${AKS_SP_OBJECTID}" \
-        aksServicePrincipalClientId="${AKS_SP_APPID}" \
-        aksServicePrincipalClientSecret="${AKS_SP_SECRET}" \
-        AAD_TenantID="${AAD_INTEGRATED_TENANT}" \
-        AAD_ServerAppID="${serverAppId}" \
-        AAD_ServerAppSecret="${serverAppSecret}" \
-        AAD_ClientAppID="${clientAppId}"
-        
-        
+az group create -l westeurope -n $GROUP >/dev/null
+
+function setup_cluster {
+    local cluster_api_url=$1
+    local applicationGatewayName=$2
+    local group=$3
+    local cluster_name=$4
+    local user_id=$5
+    local msi_resourceid=$6
+    local msi_clientid=$7
+
+    local NAMESPACE="example"
+
+    echo "Setting up namespace [${NAMESPACE}] with RBAC for signed in user"
+    ## sign in with admin credentials
+    az aks get-credentials -g $group -n $cluster_name --overwrite-existing --admin
+
+    # Create a namespace
+    kubectl create namespace $NAMESPACE
+
+    # Crete the Role that defines the permissions on the namespace
+    kubectl apply --namespace $NAMESPACE -f ./role-ns-user-full-access.yaml
+
+    # Create a RoleBinding
+    kubectl create rolebinding creation-user-full-access --namespace $NAMESPACE --role=user-full-access --user=$user_id
+
+    echo "Initialise tiller against new cluster"
+    kubectl apply -f ./helm-rbac.yaml
+    helm init --service-account tiller --node-selectors "beta.kubernetes.io/os"="linux"
+
+    echo "Deploying the AppGW ingress controller"
+
+
+    echo "Install the AAD POD Identity into the cluster ( Managed Identity Controller (MIC) deployment, the Node Managed Identity (NMI) daemon)..."
+    kubectl apply -f https://raw.githubusercontent.com/Azure/aad-pod-identity/master/deploy/infra/deployment-rbac.yaml
+
+    echo "Add the helm repo for Application Gateway Ingress Controller..."
+    helm repo add application-gateway-kubernetes-ingress https://appgwingress.blob.core.windows.net/ingress-azure-helm-package/
+    echo "Get the latest Chart..."
+    helm repo update
+
+    echo "Installing the Chart..."
+    helm install application-gateway-kubernetes-ingress/ingress-azure \
+        --name ingress-azure \
+        --namespace default \
+        --set appgw.name=$applicationGatewayName \
+        --set appgw.resourceGroup=$group \
+        --set appgw.subscriptionId=$(az account show --query id -o tsv) \
+        --set appgw.shared=false \
+        --set armAuth.type=aadPodIdentity \
+        --set armAuth.identityResourceID=$msi_resourceid \
+        --set armAuth.identityClientID=$msi_clientid \
+        --set rbac.enabled=true \
+        --set verbosityLevel=3 \
+        --set kubernetes.watchNamespace=$NAMESPACE \
+        --set aksClusterConfiguration.apiServerAddress=$cluster_api_url
+}
+
+
+while true; do
+    read -p "About to try template creation, continue [y/n]?" yn
+    case $yn in
+        [Yy]* ) 
+
+            ARM_OUTPUT=$(az group deployment create -g $GROUP \
+                --template-file ./azuredeploy.json \
+                --parameters \
+                    resourceName="${CLUSTER_NAME}" \
+                    dnsPrefix="${CLUSTER_NAME}" \
+                    aksServicePrincipalObjectId="${AKS_SP_OBJECTID}" \
+                    aksServicePrincipalClientId="${AKS_SP_APPID}" \
+                    aksServicePrincipalClientSecret="${AKS_SP_SECRET}" \
+                    AAD_TenantID="${AAD_INTEGRATED_TENANT}" \
+                    AAD_ServerAppID="${serverAppId}" \
+                    AAD_ServerAppSecret="${serverAppSecret}" \
+                    AAD_ClientAppID="${clientAppId}" \
+                     --query "[properties.outputs.controlPlaneFQDN.value,properties.outputs.applicationGatewayName.value,properties.outputs.msiIdentityResourceId.value,properties.outputs.msiIdentityClientId.value]" --output tsv)
+
+            if [ $? -eq 0 ] ; then
+                echo "Success"
+                controlPlaneFQDN=$(echo $ARM_OUTPUT | cut -f 1 -d ' ')
+                applicationGatewayName=$(echo $ARM_OUTPUT | cut -f 2 -d ' ')
+                msiIdentityResourceId=$(echo $ARM_OUTPUT | cut -f 3 -d ' ')
+                msiIdentityClientId=$(echo $ARM_OUTPUT | cut -f 4 -d ' ')
+
+                echo "Setting up cluster...."
+
+
+                setup_cluster "$controlPlaneFQDN" "$applicationGatewayName"  "$GROUP" "$CLUSTER_NAME" "$USER_OBJECTID" "$msiIdentityResourceId" "$msiIdentityClientId"
+                exit 0
+            else
+                echo "Create cluster failed, if this may be because the sevice principle has not propergated yet, plese try again in a few minutes.."
+            fi
+            ;;
+        [Nn]* ) 
+            exit;;
+        * ) 
+            echo "Please answer yes or no.";;
+    esac
+done
         

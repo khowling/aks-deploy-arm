@@ -1,0 +1,151 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.1",
+  "parameters": {
+      "clusterName": {
+          "type": "string",
+          "defaultValue":"myAKSCluster",
+          "metadata": {
+              "description": "The name of the Managed Cluster resource."
+          }
+      },
+      "agentPoolName": {
+          "type": "string",
+          "defaultValue":"agentpool",
+          "metadata": {
+              "description": "The name of the agent pool."
+          }
+      },
+      "count": {
+          "type": "int",
+          "defaultValue": 3,
+          "metadata": {
+              "description": "The number of nodes for the node pool."
+          },
+          "minValue": 1,
+          "maxValue": 100
+      },
+      "VMSize": {
+          "type": "string",
+          "defaultValue": "Standard_DS2_v2",
+          "metadata": {
+              "description": "The size of the Virtual Machine."
+          }
+      },
+      "osDiskSizeGB": {
+          "type": "int",
+          "defaultValue": 30,
+          "metadata": {
+              "description": "Disk size (in GB) to provision for each ofthe agent pool nodes. This value ranges from 0 to 1023. Specifying 0will apply the default disk size for that agentVMSize."
+          },
+          "minValue": 30,
+          "maxValue": 2048
+      },
+      "osType": {
+          "type": "string",
+          "defaultValue": "Linux",
+          "allowedValues": [
+              "Linux",
+              "Windows"
+          ],
+          "metadata": {
+              "description": "OsType to be used to specify os type.Choose from Linux and Windows. Default to Linux."
+          }
+      },
+      "type": {
+          "type": "string",
+          "defaultValue": "VirtualMachineScaleSets",
+          "metadata": {
+              "description": "AgentPoolType represents types of an agentpool"
+          }
+      },
+      "orchestratorVersion": {
+          "type": "string",
+          "defaultValue": "1.13.5",
+          "allowedValues": [
+            "1.10.12",
+            "1.10.13",
+            "1.11.8",
+            "1.11.9",
+            "1.12.7",
+            "1.12.8",
+            "1.13.5",
+            "1.14.0"
+          ],
+          "metadata": {
+              "description": "The orchestrator version of your managedcluster."
+          }
+      },
+      "ScaleSetPriority": {
+          "type": "string",
+          "defaultValue": "Low",
+          "allowedValues": [
+            "Low",
+            "Regular"
+          ],
+          "metadata": {
+              "description": "Priority of the nodes assigned to the
+scale set backing the node pool."
+          }
+      },
+      "maxPods": {
+          "type": "int",
+          "defaultValue": 110,
+          "metadata": {
+              "description": "Maximum number of pods that can run on anode."
+          }
+      },
+      "enableAutoScaling": {
+          "type": "bool",
+          "defaultValue": true,
+          "metadata": {
+              "description": "Whether to enable auto-scaler"
+          }
+      },
+      "minCount": {
+          "type": "int",
+          "defaultValue": 1,
+          "metadata": {
+              "description": "Minimum number of nodes for auto-scaling."
+          }
+      },
+      "maxCount": {
+          "type": "int",
+          "defaultValue": 5,
+          "metadata": {
+              "description": "Maximum number of nodes for auto-scaling.
+This value should match the count value for the node pool."
+          }
+      }
+  },
+  "resources": [
+      {
+          "apiVersion": "2019-06-01",
+          "type": "Microsoft.ContainerService/managedClusters/agentPools",
+          "name": "[concat(parameters('clusterName'), '/',parameters('agentPoolName'))]",
+          "properties": {
+            "count": "[parameters('count')]",
+            "vmSize": "[parameters('vmSize')]",
+            "osDiskSizeGB": "[parameters('osDiskSizeGB')]",
+            "osType": "[parameters('osType')]",
+            "enableAutoScaling": "[parameters('enableAutoScaling')]",
+            "type": "[parameters('type')]",
+            "orchestratorVersion": "[parameters('orchestratorVersion')]",
+            "ScaleSetPriority": "[parameters('ScaleSetPriority')]",
+            "ScaleSetEvictionPolicy": "Delete",
+            "nodeTaints": [
+                "pooltype=lowpri:NoSchedule"
+            ],
+            "maxPods": "[parameters('maxPods')]",
+            "minCount": "[parameters('minCount')]",
+            "maxCount": "[parameters('maxCount')]"
+          }
+      }
+  ],
+  "outputs": {
+      "agentPoolName": {
+          "type": "string",
+          "value": "[concat('Microsoft.ContainerService/managedClusters', parameters('clusterName'), '/agentPools/', parameters('agentPoolName'))]"
+      }
+  }
+}
