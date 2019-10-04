@@ -20,6 +20,12 @@ while getopts "n:sa:t:" opt; do
       if [[ $ADDONS =~ " acr " ]]; then
         acrSku="Basic"
       fi
+      if [[ $ADDONS =~ " networkPolicy " ]]; then
+        networkPolicy="calico"
+      fi
+      ;;
+    n )
+      networkPlugin=$OPTARG
       ;;
     s )
       skip_app_creation="true"
@@ -38,7 +44,7 @@ done
 
 shift $((OPTIND -1))
 
-if [ $# -ne 1 ] || [ "$show_usage" ]; then
+if [ $# -ne 1 ] || [ -z "$networkPlugin" ] || [ "$show_usage" ]; then
     echo "Usage: $0 [-a <kured clusterautoscaler afw aci appgw acr>] [-n <kubenet|azure>] [-t tenentid] [-s] [<rg>/]<cluster_name>"
     echo "Optional args:"
     echo " -t: provide an alternative tenant id to secure your aks cluster users (you will need ADMIN rights on the tenant)"
@@ -140,6 +146,10 @@ if [ -z "$skip_app_creation" ] ; then
     az ad app permission grant --id $serverAppId --api 00000003-0000-0000-c000-000000000000 >/dev/null
     if [ $? -ne 0 ]; then
         echo "Error: Please check you have Global Admin rights on the directory, and run the script again"
+        if [ "$orig_tenant" ]; then
+          echo "Changing back to defalt tenant [${orig_tenant}] to create Cluster"
+          az login --tenant $orig_tenant >/dev/null
+        fi
         exit 1
     fi
     echo "Granting permissions ADMIN-consent..."
@@ -222,6 +232,8 @@ applicationGatewaySku=\"${applicationGatewaySku}\" \
 azureFirewallEgress=\"${azureFirewallEgress}\" \
 azureContainerInsights=\"${azureContainerInsights}\" \
 acrSku=\"${acrSku}\" \
+networkPolicy=\"${networkPolicy}\" \
+networkPlugin=\"${networkPlugin}\" \
 "
 
 
@@ -312,6 +324,8 @@ while true; do
                     azureFirewallEgress=${azureFirewallEgress} \
                     azureContainerInsights=${azureContainerInsights} \
                     acrSku="${acrSku}" \
+                    networkPolicy="${networkPolicy}" \
+                    networkPlugin="${networkPlugin}" \
                      --query "[properties.outputs.controlPlaneFQDN.value,properties.outputs.applicationGatewayName.value,properties.outputs.msiIdentityResourceId.value,properties.outputs.msiIdentityClientId.value]" --output tsv)
 
             if [ $? -eq 0 ] ; then

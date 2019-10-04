@@ -78,7 +78,19 @@
                 "azure",
                 "kubenet"
             ],
-            "defaultValue": "azure",
+            "defaultValue": "kubenet",
+            "type": "string",
+            "metadata": {
+                "description": "Network plugin used for building Kubernetes network."
+            }
+        },
+        "networkPolicy": {
+            "allowedValues": [
+                "calico",
+                "azure",
+                ""
+            ],
+            "defaultValue": "",
             "type": "string",
             "metadata": {
                 "description": "Network plugin used for building Kubernetes network."
@@ -234,11 +246,45 @@
         "vnetName": "[concat('vnet-', parameters('resourceName'))]",
         "firewallName": "[concat('fw-', parameters('resourceName'))]",
         "workspaceName": "[concat('workspace-', parameters('resourceName'))]",
-        "vnetAksSubnetName": "AgentNodePoolsSubnet",
-        "vnetAppGatewaySubnetName": "AppGwIngressSubnet",
-        "vnetFirewallSubnetName": "AzureFirewallSubnet",
-        "vnetOnPremSubnetName": "GatewaySubnet",
-        "vnetInternalLBSubnetName": "InternalLBSubnet",
+
+        "vnetAppGatewaySubnet": {
+            "name": "AppGwIngressSubnet",
+            "properties": {
+            "addressPrefix": "[parameters('vnetAppGatewaySubnetAddressPrefix')]"
+            }
+        },
+        "vnetFirewallSubnet": {
+            "name": "AzureFirewallSubnet",
+            "properties": {
+            "addressPrefix": "[parameters('vnetFirewallSubnetAddressPrefix')]"
+            }
+        },
+        "vnetOnPremSubnet": {
+            "name": "GatewaySubnet",
+            "properties": {
+            "addressPrefix": "[parameters('vnetOnPremSubnetAddressPrefix')]"
+            }
+        },
+        "vnetAksSubnetName": "AgentNodePoolsSubnet", 
+        "default_subnets": [
+            {
+            "name":  "[variables('vnetAksSubnetName')]",
+            "properties": {
+                "addressPrefix": "[parameters('vnetAksSubnetAddressPrefix')]"
+            }
+            },
+            {
+            "name": "InternalLBSubnet",
+            "properties": {
+                "addressPrefix": "[parameters('vnetInternalLBSubnetAddressPrefix')]"
+            }
+            }
+        ],
+        "default_plus_appgw_subnets" : "[if (not(empty(parameters('applicationGatewaySku'))), concat(array(variables('default_subnets')),array(variables('vnetAppGatewaySubnet'))), array(variables('default_subnets')))]",
+        "default_plus_appgw_fw_subnets" : "[if (parameters('azureFirewallEgress'), concat(array(variables('default_plus_appgw_subnets')),array(variables('vnetFirewallSubnet'))), array(variables('default_plus_appgw_subnets')))]",
+        "default_plus_appgw_fw_onprem_subnets" : "[if (parameters('createOnPremGW'), concat(array(variables('default_plus_appgw_fw_subnets')),array(variables('vnetOnPremSubnet'))), array(variables('default_plus_appgw_fw_subnets')))]",
+
+
         "routeFwTableName": "[concat('route-fw-', parameters('resourceName'))]",
         "msiIdentityName": "[concat('appgwManagedIdentity' , replace(parameters('resourceName'),'-', ''))]",
         "msiIdentityId": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('msiIdentityName'))]",
@@ -292,60 +338,8 @@
                         "[parameters('vnetAddressPrefix')]"
                     ]
                 },
-                "subnets": [
-                    {
-                        "name": "[variables('vnetAksSubnetName')]",
-                        "properties": {
-                            "addressPrefix": "[parameters('vnetAksSubnetAddressPrefix')]"
-                        }
-                    },
-                    {
-                        "name": "[variables('vnetInternalLBSubnetName')]",
-                        "properties": {
-                            "addressPrefix": "[parameters('vnetInternalLBSubnetAddressPrefix')]"
-                        }
-                    } 
-                ]
+                "subnets": "[variables('default_plus_appgw_fw_onprem_subnets')]"
             }
-        },
-        {
-            "condition": "[parameters('createOnPremGW')]",
-            "apiVersion": "2019-04-01",
-            "type": "Microsoft.Network/virtualNetworks/subnets",
-            "name": "[concat(variables('vnetName'), '/', variables('vnetOnPremSubnetName'))]",
-            "location": "[parameters('location')]",
-            "properties": {
-                "addressPrefix": "[parameters('vnetOnPremSubnetAddressPrefix')]"
-            },
-            "dependsOn": [
-                "[concat('Microsoft.Network/virtualNetworks/', variables('vnetName'))]"
-            ]
-        },
-        {
-            "condition": "[not(empty(parameters('applicationGatewaySku')))]",
-            "apiVersion": "2019-04-01",
-            "type": "Microsoft.Network/virtualNetworks/subnets",
-            "name": "[concat(variables('vnetName'), '/', variables('vnetAppGatewaySubnetName'))]",
-            "location": "[parameters('location')]",
-            "properties": {
-                "addressPrefix": "[parameters('vnetAppGatewaySubnetAddressPrefix')]"
-            },
-            "dependsOn": [
-                "[concat('Microsoft.Network/virtualNetworks/', variables('vnetName'))]"
-            ]
-        },
-        {
-            "condition": "[parameters('azureFirewallEgress')]",
-            "apiVersion": "2019-04-01",
-            "type": "Microsoft.Network/virtualNetworks/subnets",
-            "name": "[concat(variables('vnetName'), '/', variables('vnetFirewallSubnetName'))]",
-            "location": "[parameters('location')]",
-            "properties": {
-                "addressPrefix": "[parameters('vnetFirewallSubnetAddressPrefix')]"
-            },
-            "dependsOn": [
-                "[concat('Microsoft.Network/virtualNetworks/', variables('vnetName'))]"
-            ]
         },
         {
             "condition": "[parameters('azureFirewallEgress')]",
@@ -429,7 +423,7 @@
                 "name": "[concat('IpConf', '1')]",
                 "properties": {
                     "subnet": {
-                        "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets',variables('vnetName'), variables('vnetFirewallSubnetName'))]"
+                        "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets',variables('vnetName'), variables('vnetFirewallSubnet').name)]"
                     },
                     "publicIPAddress": {
                         "id": "[resourceId('Microsoft.Network/publicIPAddresses',variables('firewallPublicIpName'))]"
@@ -621,7 +615,7 @@
                     "name": "appGatewayIpConfig",
                     "properties": {
                         "subnet": {
-                            "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets',variables('vnetName'), variables('vnetAppGatewaySubnetName'))]"
+                            "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets',variables('vnetName'), variables('vnetAppGatewaySubnet').name)]"
                         }
                     }
                 }],
@@ -629,7 +623,8 @@
                 "webApplicationFirewallConfiguration": "[if(equals(parameters('applicationGatewaySku'), 'WAF_v2'), variables('webApplicationFirewallConfiguration'), json('null'))]"
             },
             "dependsOn": [
-                "[concat('Microsoft.Network/publicIPAddresses/', variables('applicationGatewayPublicIpName'))]"
+                "[concat('Microsoft.Network/publicIPAddresses/', variables('applicationGatewayPublicIpName'))]",
+                "[concat('Microsoft.Network/virtualNetworks/', variables('vnetName'))]"
             ]
         },
         {
@@ -689,6 +684,7 @@
                 "networkProfile": {
                     "loadBalancerSku": "standard",
                     "networkPlugin": "[parameters('networkPlugin')]",
+                    "networkPolicy": "[parameters('networkPolicy')]",
                     "serviceCidr": "[parameters('serviceCidr')]",
                     "dnsServiceIP": "[parameters('dnsServiceIP')]",
                     "dockerBridgeCidr": "[parameters('dockerBridgeCidr')]"
