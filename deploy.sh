@@ -287,8 +287,8 @@ function setup_cluster {
     fi
 }
 
-echo "Sleeping for 2minutes before applying template to allow AAD propergation, please wait...."
-sleep 2m
+echo "Sleeping for 3minutes before applying template to allow AAD propergation, please wait...."
+sleep 3m
 yn="y"
 
 while true; do

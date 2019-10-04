@@ -382,10 +382,6 @@
                         "apiVersion": "2019-04-01",
                         "type": "Microsoft.Network/virtualNetworks/subnets",
                         "name": "[concat(variables('vnetName'), '/', variables('vnetAksSubnetName'))]",
-                        "dependsOn": [
-                            "[resourceId('Microsoft.Network/routeTables', variables('routeFwTableName'))]",
-                            "[concat('Microsoft.Network/virtualNetworks/', variables('vnetName'))]"
-                        ],
                         "location": "[parameters('location')]",
                         "properties": {
                             "addressPrefix": "[parameters('vnetAksSubnetAddressPrefix')]",
@@ -395,7 +391,11 @@
                         }
                     }]
                 }
-            }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/routeTables', variables('routeFwTableName'))]",
+                "[concat('Microsoft.Network/virtualNetworks/', variables('vnetName'))]"
+            ]
         },
         {
             "condition": "[parameters('azureFirewallEgress')]",
