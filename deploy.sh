@@ -1,17 +1,32 @@
 # exit on error
 #set -e
 
-while getopts "sg:t:" opt; do
+while getopts "n:sa:t:" opt; do
   case ${opt} in
+    a )
+      ADDONS=$OPTARG
+      if [[ $ADDONS =~ " appgw " ]]; then
+        applicationGatewaySku="WAF_v2"
+      fi
+
+      if [[ $ADDONS =~ " afw " ]]; then
+        azureFirewallEgress="true"
+      fi
+
+      if [[ $ADDONS =~ " aci " ]]; then
+        azureContainerInsights="true"
+      fi
+
+      if [[ $ADDONS =~ " acr " ]]; then
+        acrSku="Basic"
+      fi
+      ;;
     s )
       skip_app_creation="true"
       ;;
     t ) 
       orig_tenant=$(az account  show --query tenantId -o tsv)
       AAD_INTEGRATED_TENANT=$OPTARG
-      ;;
-    g ) 
-      GROUP=$OPTARG
       ;;
     \? )
       echo "Unknown arg"
@@ -24,17 +39,40 @@ done
 shift $((OPTIND -1))
 
 if [ $# -ne 1 ] || [ "$show_usage" ]; then
-    echo "Usage: $0 [-t tenentid] [-g resource_group_name] <cluster_name>"
+    echo "Usage: $0 [-a <kured clusterautoscaler afw aci appgw acr>] [-n <kubenet|azure>] [-t tenentid] [-s] [<rg>/]<cluster_name>"
     echo "Optional args:"
     echo " -t: provide an alternative tenant id to secure your aks cluster users (you will need ADMIN rights on the tenant)"
-    echo " -g: provide a resource group name, otherwise it will default to the <cluster_name>-rg"
     echo " -s: this will skip the recreation of the aad apps SPNs, (allowing re-running)"
+    echo " -a: addons (appgw kured aci)"
     exit 1
 fi
 
-# check nameing
+# check name
 # https://docs.microsoft.com/en-us/azure/architecture/best-practices/naming-conventions#containers
+#
 
+CLUSTER_NAME=${1}
+IFS='/' read -ra clust_array <<< "$CLUSTER_NAME"
+
+if [ -z "${clust_array[1]}" ] ; then
+    GROUP="${clust_array[0]}-rg"
+    CLUSTER_NAME="${clust_array[0]}"
+else
+    GROUP="${clust_array[0]}"
+    CLUSTER_NAME="${clust_array[1]}"
+fi
+
+# App Service name : 2-60, Alphanumeric or -, (but not begining or ending with -)
+if [[ ! "$CLUSTER_NAME" =~ ^([[:alnum:]]|-)*$ ]] || [[ "$CLUSTER_NAME" =~ ^-|-$ ]] || [ ${#CLUSTER_NAME} -gt 63 ] || [ ${#CLUSTER_NAME} -lt 2 ] ; then
+    echo 'AKS cluster name can only container alpha numeric charactors or "-" (but not begining or ending with "-"), and be between 2-63 long'
+    exit 1
+fi
+
+echo "Creating Cluster [${CLUSTER_NAME}] in resource group [${GROUP}], with option [applicationGatewaySku=${applicationGatewaySku} azureFirewallEgress=${azureFirewallEgress} azureContainerInsights=${azureContainerInsights} acrSku=${acrSku}]..."
+
+# Checking required tenant for the cluster federation
+#
+#
 if [  "$orig_tenant" ]; then
     echo "You have selected an alternative tenent for cluster RBAC users, you will need to auth so we can create the required Apps, press ENTER to continue.."
     read
@@ -51,20 +89,8 @@ USER_DETAILS=$(az ad signed-in-user show --query "[objectId,userPrincipalName]" 
 USER_OBJECTID=$(echo $USER_DETAILS | cut -f 1 -d ' ')
 USER_UPN=$(echo $USER_DETAILS | cut -f 2 -d ' ')
 
-
-echo "This is the user we will add to the Kubernetes RBAC objectId: [${USER_OBJECT_ID}]"
 echo "This is the user we will add to the Kubernetes RBAC objectId: [$(az ad  signed-in-user show --query objectId -o tsv)]"
 
-CLUSTER_NAME=${1}
-GROUP=${GROUP:-"${CLUSTER_NAME}-rg"}
-
-RAND5DIGIT=$(echo "${APP,,}$((RANDOM%9000+1000))" | tr -cd '[[:alnum:]]-' )
-
-# App Service name : 2-60, Alphanumeric or -, (but not begining or ending with -)
-if [[ ! "$CLUSTER_NAME" =~ ^([[:alnum:]]|-)*$ ]] || [[ "$CLUSTER_NAME" =~ ^-|-$ ]] || [ ${#CLUSTER_NAME} -gt 63 ] || [ ${#CLUSTER_NAME} -lt 2 ] ; then
-    echo 'AKS cluster name can only container alpha numeric charactors or "-" (but not begining or ending with "-"), and be between 2-63 long'
-    exit 1
-fi
 
 # Create the server application
 # The Azure AD application you need gets Azure AD group membership for a user
@@ -78,6 +104,15 @@ ADSERVER_APP="${CLUSTER_NAME}-ADServer"
 ADCLIENT_APP="${CLUSTER_NAME}-ADClient"
 echo "Creating Server app [${ADSERVER_APP}]..."
 serverAppId=$(az ad app create --display-name $ADSERVER_APP --native-app false --reply-urls "https://${ADSERVER_APP}" --query appId -o tsv)
+
+if [ ! "$serverAppId" ]; then
+  echo "Error, failed to create AAD app, this is normally transiant, please try running the script again"
+  if [  "$orig_tenant" ]; then
+    echo "Changing back to defalt tenant [${orig_tenant}] to create Cluster"
+    az login --tenant $orig_tenant >/dev/null
+  fi
+  exit 1
+fi
 
 echo "Created/Patched [${ADSERVER_APP}], appId: ${serverAppId}"
 # Update the application group memebership claims
@@ -111,6 +146,16 @@ fi
 #  Used when a user logon interactivlty to the AKS cluster with the Kubernetes CLI (kubectl)
 echo "Creating Client app [${ADCLIENT_APP}]..."
 clientAppId=$(az ad app create  --display-name $ADCLIENT_APP --native-app --reply-urls "https://${ADCLIENT_APP}" --query appId -o tsv)
+
+if [ ! "$clientAppId" ]; then
+  echo "Error, failed to create AAD app, this is normally transiant, please try running the script again"
+  if [  "$orig_tenant" ]; then
+    echo "Changing back to defalt tenant [${orig_tenant}] to create Cluster"
+    az login --tenant $orig_tenant >/dev/null
+  fi
+  exit 1
+fi
+
 echo "Created/Patched ${ADCLIENT_APP}, AppId: ${clientAppId}"
 
 
@@ -146,6 +191,11 @@ AKS_SP=$(az ad sp create-for-rbac -n  "http://${CLUSTER_NAME}-sp" --skip-assignm
 AKS_SP_APPID=$(echo $AKS_SP | cut -f 1 -d ' ')
 AKS_SP_SECRET=$(echo $AKS_SP | cut -f 2 -d ' ')
 
+if [ ! "$AKS_SP_APPID" ]; then
+  echo "Error, failed to create AAD SPN, this is normally transiant, please try running the script again"
+  exit 1
+fi
+
 echo "Created SPN appId: ${AKS_SP_APPID}"
 AKS_SP_OBJECTID=$(az ad sp show --id $AKS_SP_APPID --query objectId -o tsv)
 
@@ -163,7 +213,11 @@ echo "[DEBUG] Creating Cluster script: az group deployment create -g $GROUP \
         AAD_TenantID=\"${AAD_INTEGRATED_TENANT}\" \
         AAD_ServerAppID=\"${serverAppId}\" \
         AAD_ServerAppSecret=\"${serverAppSecret}\" \
-        AAD_ClientAppID=\"${clientAppId}\"
+        AAD_ClientAppID=\"${clientAppId}\" \
+        applicationGatewaySku=\"${applicationGatewaySku}\" \
+        azureFirewallEgress=\"${azureFirewallEgress}\" \
+        azureContainerInsights=\"${azureContainerInsights}\" \
+        acrSku=\"${acrSku}\" \
 "
 
 
@@ -197,32 +251,36 @@ function setup_cluster {
     kubectl apply -f ./helm-rbac.yaml
     helm init --service-account tiller --node-selectors "beta.kubernetes.io/os"="linux"
 
-    echo "Deploying the AppGW ingress controller"
+
+    if [  "$applicationGatewayName" ]; then
+        echo "Deploying the AppGW ingress controller"
 
 
-    echo "Install the AAD POD Identity into the cluster ( Managed Identity Controller (MIC) deployment, the Node Managed Identity (NMI) daemon)..."
-    kubectl apply -f https://raw.githubusercontent.com/Azure/aad-pod-identity/master/deploy/infra/deployment-rbac.yaml
+        echo "Install the AAD POD Identity into the cluster ( Managed Identity Controller (MIC) deployment, the Node Managed Identity (NMI) daemon)..."
+        kubectl apply -f https://raw.githubusercontent.com/Azure/aad-pod-identity/master/deploy/infra/deployment-rbac.yaml
 
-    echo "Add the helm repo for Application Gateway Ingress Controller..."
-    helm repo add application-gateway-kubernetes-ingress https://appgwingress.blob.core.windows.net/ingress-azure-helm-package/
-    echo "Get the latest Chart..."
-    helm repo update
+        echo "Add the helm repo for Application Gateway Ingress Controller..."
+        helm repo add application-gateway-kubernetes-ingress https://appgwingress.blob.core.windows.net/ingress-azure-helm-package/
+        echo "Get the latest Chart..."
+        helm repo update
 
-    echo "Installing the Chart..."
-    helm install application-gateway-kubernetes-ingress/ingress-azure \
-        --name ingress-azure \
-        --namespace default \
-        --set appgw.name=$applicationGatewayName \
-        --set appgw.resourceGroup=$group \
-        --set appgw.subscriptionId=$(az account show --query id -o tsv) \
-        --set appgw.shared=false \
-        --set armAuth.type=aadPodIdentity \
-        --set armAuth.identityResourceID=$msi_resourceid \
-        --set armAuth.identityClientID=$msi_clientid \
-        --set rbac.enabled=true \
-        --set verbosityLevel=3 \
-        --set kubernetes.watchNamespace=$NAMESPACE \
-        --set aksClusterConfiguration.apiServerAddress=$cluster_api_url
+        echo "Installing the Chart..."
+        helm install application-gateway-kubernetes-ingress/ingress-azure \
+            --name ingress-azure \
+            --namespace default \
+            --set appgw.name=$applicationGatewayName \
+            --set appgw.resourceGroup=$group \
+            --set appgw.subscriptionId=$(az account show --query id -o tsv) \
+            --set appgw.shared=false \
+            --set armAuth.type=aadPodIdentity \
+            --set armAuth.identityResourceID=$msi_resourceid \
+            --set armAuth.identityClientID=$msi_clientid \
+            --set rbac.enabled=true \
+            --set verbosityLevel=3 \
+            --set kubernetes.watchNamespace=$NAMESPACE \
+            --set aksClusterConfiguration.apiServerAddress=$cluster_api_url
+
+    fi
 }
 
 
@@ -243,6 +301,10 @@ while true; do
                     AAD_ServerAppID="${serverAppId}" \
                     AAD_ServerAppSecret="${serverAppSecret}" \
                     AAD_ClientAppID="${clientAppId}" \
+                    applicationGatewaySku="${applicationGatewaySku}" \
+                    azureFirewallEgress=${azureFirewallEgress} \
+                    azureContainerInsights=${azureContainerInsights} \
+                    acrSku="${acrSku}" \
                      --query "[properties.outputs.controlPlaneFQDN.value,properties.outputs.applicationGatewayName.value,properties.outputs.msiIdentityResourceId.value,properties.outputs.msiIdentityClientId.value]" --output tsv)
 
             if [ $? -eq 0 ] ; then

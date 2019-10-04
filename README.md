@@ -38,13 +38,28 @@ Optional args:
 
 The Template will create
 
-* acr<cluster_name> - This is the _Azure Container Registry_ to securly host your containers.  The AKS Service Principle will be assigned the `AcrPullRole` role on this resource
-* vnet-<cluster_name> - This is a _VNET_ to host the agent nodes.  The AKS Service Principle will be assigned the `Network Contributor` role on the agent subnet
-* workspace-<cluster_name> - This is the _Log Workspace_ to store the cluster metrics and logging data 
-* appgw-<cluster_name> - This will be your _Application Gateway WAF Ingress Service_ for your applications
-* appgwPodIdentity<cluster_name> - This will be the _Application Gateway Ingress Controller_ POD Idenetity to allow the contoller PODs to configure the WAF service, this will be assigned the following roles:
-    * `Contributor` on the Application Gateway resource
-    * `Reader` on the Resource group
+(optional)
+* `appgw-<cluster_name>` - This will be your `Application Gateway WAF` Ingress Service_ for your applications
+* `appgwManagedIdentity<cluster_name>` - creates a `user-assigned Managed Identity` resource.  This Identity is used by the `application-gateway-ingress-controller` to configure routing rules. This identity is assigned the `Contributer` role on the Application Gateway & the `Reader` Role on the Application gateway Resource Group, in addition The `AKS Service Principle` will be assigned the `Managed Identity Operator` role to allow AKS to read the identity. This is all accomplished by the deplyoment `ClusterRoleAssignmentDeploymentForMSI`.
+
+(optional)
+* `acr<cluster_name>` - This is the `Azure Container Registry` to securly host your containers.  The `AKS Service Principle` will be assigned the `AcrPullRole` role on this resource to allow AKS to pull images (accomplished by the deplyoment `ClusterRoleAssignmentForKubenetesSPN`) 
+
+(optional)
+* `vnet-<cluster_name>` - This is a `VNET` to host the agent nodes.  The `AKS Service Principle` will be assigned the `Network Contributor` role on the agent subnet to allow AKS to create networking services (accomplished by the deplyoment `ClusterRoleAssignmentForKubenetesSPN`) 
+
+(optional)
+* `vnetfw-<cluster_name>` - This is a `Azure Firewall` to protect your cluster egress traffic.  A UDR (Routing Rule) is defined on the aks node subnet to ensure all cluster egress traffic is routed through the firewall. The firewall is configured with the folowing:
+    * Application rules: Configure fully qualified domain names (FQDNs) that can be accessed from a subnet, this list is sourced from : https://docs.microsoft.com/en-us/azure/aks/limit-egress-traffic#required-ports-and-addresses-for-aks-clusters
+    * Network rules: Configure rules that contain source addresses, protocols, destination ports, and destination addresses. This is blocked
+    * NAT rules: Configure DNAT rules to allow incoming connections.  This is blocked
+* `
+
+(optional)
+* `workspace-<cluster_name>` - This is the `Log Analytics Workspace` to store the cluster metrics and logging data 
+
+* `<cluster_name>` - This is your AKS cluster resource.
+
 
 
 # Post Script
