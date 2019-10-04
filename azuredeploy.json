@@ -212,6 +212,10 @@
                 ""
             ]
         },
+        "createOnPremGW": {
+            "type": "bool",
+            "defaultValue": false
+        },
         "acrAdminUserEnabled": {
             "type": "bool",
             "defaultValue": false
@@ -300,16 +304,22 @@
                         "properties": {
                             "addressPrefix": "[parameters('vnetInternalLBSubnetAddressPrefix')]"
                         }
-                    },
-                    {
-                        "name": "[variables('vnetOnPremSubnetName')]",
-                        "properties": {
-                            "addressPrefix": "[parameters('vnetOnPremSubnetAddressPrefix')]"
-                        }
-                    }
-                    
+                    } 
                 ]
             }
+        },
+        {
+            "condition": "[parameters('createOnPremGW')]",
+            "apiVersion": "2019-04-01",
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "name": "[concat(variables('vnetName'), '/', variables('vnetOnPremSubnetName'))]",
+            "location": "[parameters('location')]",
+            "properties": {
+                "addressPrefix": "[parameters('vnetOnPremSubnetAddressPrefix')]"
+            },
+            "dependsOn": [
+                "[concat('Microsoft.Network/virtualNetworks/', variables('vnetName'))]"
+            ]
         },
         {
             "condition": "[not(empty(parameters('applicationGatewaySku')))]",
@@ -686,13 +696,13 @@
             },
             "dependsOn": [
                 "[concat('Microsoft.Network/virtualNetworks/', variables('vnetName'))]",
-                "[concat('Microsoft.Resources/deployments/', 'ClusterRoleAssignmentForKubenetesSPN')]",
+                "[concat('Microsoft.Resources/deployments/', 'NetworkRoleAssignmentForKubenetesSPN')]",
                 "[concat('Microsoft.OperationalInsights/workspaces/', variables('workspaceName'))]"
             ]
         },
         {
             "type": "Microsoft.Resources/deployments",
-            "name": "ClusterRoleAssignmentForKubenetesSPN",
+            "name": "NetworkRoleAssignmentForKubenetesSPN",
             "apiVersion": "2017-05-10",
             "properties": {
                 "mode": "Incremental",
@@ -710,9 +720,28 @@
                                 "roleDefinitionId": "[variables('networkContributorRole')]",
                                 "principalId": "[parameters('aksServicePrincipalObjectId')]"
                             }
-                        },
+                        }
+                    ]
+                }
+            },
+            "dependsOn": [
+                "[concat('Microsoft.Network/virtualNetworks/', variables('vnetName'))]"
+            ]
+        },
+        {
+            "condition": "[not(empty(parameters('acrSku')))]",
+            "type": "Microsoft.Resources/deployments",
+            "name": "ACRRoleAssignmentForKubenetesSPN",
+            "apiVersion": "2017-05-10",
+            "properties": {
+                "mode": "Incremental",
+                "template": {
+                    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {},
+                    "variables": {},
+                    "resources": [
                         {
-                            "condition": "[not(empty(parameters('acrSku')))]",
                             "type": "Microsoft.ContainerRegistry/registries/providers/roleAssignments",
                             "apiVersion": "2017-05-01",
                             "name": "[concat(variables('acrName'), '/Microsoft.Authorization/', guid(resourceGroup().id, 'identityacraccess'))]",
@@ -725,7 +754,6 @@
                 }
             },
             "dependsOn": [
-                "[concat('Microsoft.Network/virtualNetworks/', variables('vnetName'))]",
                 "[concat('Microsoft.ContainerRegistry/registries/', variables('acrName'))]"
             ]
         },
@@ -748,7 +776,7 @@
                             "name": "[concat(variables('applicationGatewayName'), '/Microsoft.Authorization/', guid(resourceGroup().id, 'identityappgwaccess'))]",
                             "properties": {
                                 "roleDefinitionId": "[variables('appGwContributorRole')]",
-                                "principalId": "[reference(variables('msiIdentityId'), '2018-11-30').principalId]",
+                                "principalId": "[if (empty(parameters('applicationGatewaySku')), '', reference(variables('msiIdentityId'), '2018-11-30').principalId)]",
                                 "scope": "[resourceId('Microsoft.Network/applicationgateways', variables('applicationGatewayName'))]"
                             }
                         },
@@ -758,7 +786,7 @@
                             "name": "[guid(resourceGroup().id, 'identityrgaccess')]",
                             "properties": {
                                 "roleDefinitionId": "[variables('readerRole')]",
-                                "principalId": "[reference(variables('msiIdentityId'), '2018-11-30').principalId]",
+                                "principalId": "[if (empty(parameters('applicationGatewaySku')), '', reference(variables('msiIdentityId'), '2018-11-30').principalId)]",
                                 "scope": "[resourceGroup().id]"
                             }
                         },
@@ -777,8 +805,7 @@
                 }
             },
             "dependsOn": [
-                "[concat('Microsoft.Network/applicationgateways/', variables('applicationGatewayName'))]",
-                "[concat('Microsoft.ManagedIdentity/userAssignedIdentities/', variables('msiIdentityName'))]"
+                "[concat('Microsoft.Network/applicationgateways/', variables('applicationGatewayName'))]"
             ]
         }
        

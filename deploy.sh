@@ -105,9 +105,9 @@ ADCLIENT_APP="${CLUSTER_NAME}-ADClient"
 echo "Creating Server app [${ADSERVER_APP}]..."
 serverAppId=$(az ad app create --display-name $ADSERVER_APP --native-app false --reply-urls "https://${ADSERVER_APP}" --query appId -o tsv)
 
-if [ ! "$serverAppId" ]; then
+if [ -z "$serverAppId" ]; then
   echo "Error, failed to create AAD app, this is normally transiant, please try running the script again"
-  if [  "$orig_tenant" ]; then
+  if [ "$orig_tenant" ]; then
     echo "Changing back to defalt tenant [${orig_tenant}] to create Cluster"
     az login --tenant $orig_tenant >/dev/null
   fi
@@ -119,7 +119,7 @@ echo "Created/Patched [${ADSERVER_APP}], appId: ${serverAppId}"
 az ad app update --id $serverAppId --set groupMembershipClaims=All >/dev/null
 
 
-if [ ! "$skip_app_creation" ] ; then
+if [ -z "$skip_app_creation" ] ; then
     # Now create a service principal for the server app (specific to granting permissions to resources in this tenant)
     # Create a service principal for the Azure AD application
     echo "Create a service principal for the app...."
@@ -128,7 +128,7 @@ fi
 
 serverAppSecret=$(az ad sp credential reset --name $serverAppId --credential-description "AKSPassword" --query password -o tsv)
 
-if [ ! "$skip_app_creation" ] ; then
+if [ -z "$skip_app_creation" ] ; then
     # Get the service principal secret
     echo "Adding directory permissions for Delegate & Applicaion to Directory.Read.All..."
     az ad app permission add \
@@ -138,6 +138,10 @@ if [ ! "$skip_app_creation" ] ; then
 
     echo "Granting permissions..."
     az ad app permission grant --id $serverAppId --api 00000003-0000-0000-c000-000000000000 >/dev/null
+    if [ $? -ne 0 ]; then
+        echo "Error: Please check you have Global Admin rights on the directory, and run the script again"
+        exit 1
+    fi
     echo "Granting permissions ADMIN-consent..."
     az ad app permission admin-consent --id  $serverAppId >/dev/null
 fi
@@ -147,7 +151,7 @@ fi
 echo "Creating Client app [${ADCLIENT_APP}]..."
 clientAppId=$(az ad app create  --display-name $ADCLIENT_APP --native-app --reply-urls "https://${ADCLIENT_APP}" --query appId -o tsv)
 
-if [ ! "$clientAppId" ]; then
+if [ -z "$clientAppId" ]; then
   echo "Error, failed to create AAD app, this is normally transiant, please try running the script again"
   if [  "$orig_tenant" ]; then
     echo "Changing back to defalt tenant [${orig_tenant}] to create Cluster"
@@ -159,7 +163,7 @@ fi
 echo "Created/Patched ${ADCLIENT_APP}, AppId: ${clientAppId}"
 
 
-if [ ! "$skip_app_creation" ] ; then
+if [ -z "$skip_app_creation" ] ; then
     echo "Create a service principal for the app...."
     az ad sp create --id $clientAppId >/dev/null
 
@@ -176,7 +180,7 @@ if [ ! "$skip_app_creation" ] ; then
     az ad app permission grant --id $clientAppId --api $serverAppId >/dev/null
 fi
 
-if [  "$orig_tenant" ]; then
+if [ "$orig_tenant" ]; then
     echo "Changing back to defalt tenant [${orig_tenant}] to create Cluster"
     az login --tenant $orig_tenant >/dev/null
 fi
@@ -191,7 +195,7 @@ AKS_SP=$(az ad sp create-for-rbac -n  "http://${CLUSTER_NAME}-sp" --skip-assignm
 AKS_SP_APPID=$(echo $AKS_SP | cut -f 1 -d ' ')
 AKS_SP_SECRET=$(echo $AKS_SP | cut -f 2 -d ' ')
 
-if [ ! "$AKS_SP_APPID" ]; then
+if [ -z "$AKS_SP_APPID" ]; then
   echo "Error, failed to create AAD SPN, this is normally transiant, please try running the script again"
   exit 1
 fi
@@ -203,21 +207,21 @@ AKS_SP_OBJECTID=$(az ad sp show --id $AKS_SP_APPID --query objectId -o tsv)
 
 
 echo "[DEBUG] Creating Cluster script: az group deployment create -g $GROUP \
-    --template-file ./azuredeploy.json \
-    --parameters \
-        resourceName=\"${CLUSTER_NAME}\" \
-        dnsPrefix=\"${CLUSTER_NAME}\" \
-        aksServicePrincipalObjectId=\"${AKS_SP_OBJECTID}\" \
-        aksServicePrincipalClientId=\"${AKS_SP_APPID}\" \
-        aksServicePrincipalClientSecret=\"${AKS_SP_SECRET}\" \
-        AAD_TenantID=\"${AAD_INTEGRATED_TENANT}\" \
-        AAD_ServerAppID=\"${serverAppId}\" \
-        AAD_ServerAppSecret=\"${serverAppSecret}\" \
-        AAD_ClientAppID=\"${clientAppId}\" \
-        applicationGatewaySku=\"${applicationGatewaySku}\" \
-        azureFirewallEgress=\"${azureFirewallEgress}\" \
-        azureContainerInsights=\"${azureContainerInsights}\" \
-        acrSku=\"${acrSku}\" \
+--template-file ./azuredeploy.json \
+--parameters \
+resourceName=\"${CLUSTER_NAME}\" \
+dnsPrefix=\"${CLUSTER_NAME}\" \
+aksServicePrincipalObjectId=\"${AKS_SP_OBJECTID}\" \
+aksServicePrincipalClientId=\"${AKS_SP_APPID}\" \
+aksServicePrincipalClientSecret=\"${AKS_SP_SECRET}\" \
+AAD_TenantID=\"${AAD_INTEGRATED_TENANT}\" \
+AAD_ServerAppID=\"${serverAppId}\" \
+AAD_ServerAppSecret=\"${serverAppSecret}\" \
+AAD_ClientAppID=\"${clientAppId}\" \
+applicationGatewaySku=\"${applicationGatewaySku}\" \
+azureFirewallEgress=\"${azureFirewallEgress}\" \
+azureContainerInsights=\"${azureContainerInsights}\" \
+acrSku=\"${acrSku}\" \
 "
 
 
@@ -232,7 +236,7 @@ function setup_cluster {
     local msi_resourceid=$6
     local msi_clientid=$7
 
-    local NAMESPACE="example"
+    local NAMESPACE="production"
 
     echo "Setting up namespace [${NAMESPACE}] with RBAC for signed in user"
     ## sign in with admin credentials
@@ -242,7 +246,7 @@ function setup_cluster {
     kubectl create namespace $NAMESPACE
 
     # Crete the Role that defines the permissions on the namespace
-    kubectl apply --namespace $NAMESPACE -f ./role-ns-user-full-access.yaml
+    kubectl apply --namespace $NAMESPACE -f ./role-production-user-full-access.yaml
 
     # Create a RoleBinding
     kubectl create rolebinding creation-user-full-access --namespace $NAMESPACE --role=user-full-access --user=$user_id
@@ -252,7 +256,7 @@ function setup_cluster {
     helm init --service-account tiller --node-selectors "beta.kubernetes.io/os"="linux"
 
 
-    if [  "$applicationGatewayName" ]; then
+    if [ "$applicationGatewayName" ]; then
         echo "Deploying the AppGW ingress controller"
 
 
@@ -283,9 +287,12 @@ function setup_cluster {
     fi
 }
 
+echo "Sleeping for 2minutes before applying template to allow AAD propergation, please wait...."
+sleep 2m
+yn="y"
 
 while true; do
-    read -p "About to try template creation, continue [y/n]?" yn
+    
     case $yn in
         [Yy]* ) 
 
@@ -308,19 +315,21 @@ while true; do
                      --query "[properties.outputs.controlPlaneFQDN.value,properties.outputs.applicationGatewayName.value,properties.outputs.msiIdentityResourceId.value,properties.outputs.msiIdentityClientId.value]" --output tsv)
 
             if [ $? -eq 0 ] ; then
-                echo "Success"
-                controlPlaneFQDN=$(echo $ARM_OUTPUT | cut -f 1 -d ' ')
-                applicationGatewayName=$(echo $ARM_OUTPUT | cut -f 2 -d ' ')
-                msiIdentityResourceId=$(echo $ARM_OUTPUT | cut -f 3 -d ' ')
-                msiIdentityClientId=$(echo $ARM_OUTPUT | cut -f 4 -d ' ')
+                out_array=($(echo $ARM_OUTPUT | tr " " "\n"))
+                controlPlaneFQDN=${out_array[0]}
+                applicationGatewayName=${out_array[1]}
+                msiIdentityResourceId=${out_array[2]}
+                msiIdentityClientId=${out_array[3]}
 
+                echo "Success, got [controlPlaneFQDN=${controlPlaneFQDN}, applicationGatewayName=${applicationGatewayName}, msiIdentityResourceId=${msiIdentityResourceId}, msiIdentityClientId=${msiIdentityClientId} ]"
                 echo "Setting up cluster...."
 
 
                 setup_cluster "$controlPlaneFQDN" "$applicationGatewayName"  "$GROUP" "$CLUSTER_NAME" "$USER_OBJECTID" "$msiIdentityResourceId" "$msiIdentityClientId"
                 exit 0
             else
-                echo "Create cluster failed, if this may be because the sevice principle has not propergated yet, plese try again in a few minutes.."
+                echo "Create cluster failed, if this may be because the sevice principle has not propergated yet.."
+                read -p "Try template creation again [y/n]?" yn
             fi
             ;;
         [Nn]* ) 
