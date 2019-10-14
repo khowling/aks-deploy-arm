@@ -31,8 +31,12 @@ while getopts "n:sa:t:" opt; do
       skip_app_creation="true"
       ;;
     t ) 
-      orig_tenant=$(az account  show --query tenantId -o tsv)
-      AAD_INTEGRATED_TENANT=$OPTARG
+      if [[ "$OPTARG" ]]; then
+        AAD_INTEGRATED_TENANT=$OPTARG
+        orig_tenant=$(az account  show --query tenantId -o tsv)
+      else
+        AAD_INTEGRATED_TENANT=$(az account show --query tenantId --output tsv)
+      fi
       ;;
     \? )
       echo "Unknown arg"
@@ -76,123 +80,125 @@ fi
 
 echo "Creating Cluster [${CLUSTER_NAME}] in resource group [${GROUP}], with option [applicationGatewaySku=${applicationGatewaySku} azureFirewallEgress=${azureFirewallEgress} azureContainerInsights=${azureContainerInsights} acrSku=${acrSku}]..."
 
-# Checking required tenant for the cluster federation
-#
-#
-if [  "$orig_tenant" ]; then
-    echo "You have selected an alternative tenent for cluster RBAC users, you will need to auth so we can create the required Apps, press ENTER to continue.."
-    read
-    
-    az login --tenant $AAD_INTEGRATED_TENANT  --allow-no-subscriptions >/dev/null
-else
-    AAD_INTEGRATED_TENANT=$(az account show --query tenantId --output tsv)
-fi
+if [[ "$AAD_INTEGRATED_TENANT" ]]; then
 
-# Get the user details to create the kubernetes role assignment
-USER_DETAILS=$(az ad signed-in-user show --query "[objectId,userPrincipalName]" -o tsv)
-
-# Can require either the ObjectId or UPN depending on where the user is homed
-USER_OBJECTID=$(echo $USER_DETAILS | cut -f 1 -d ' ')
-USER_UPN=$(echo $USER_DETAILS | cut -f 2 -d ' ')
-
-echo "This is the user we will add to the Kubernetes RBAC objectId: [$(az ad  signed-in-user show --query objectId -o tsv)]"
-
-
-# Create the server application
-# The Azure AD application you need gets Azure AD group membership for a user
-
-# Delegate permissions for : Directory.Read.All
-# Applicaion permissions for : Directory.Read.All
-# Expose an API : Scope: ${ADSERVER_APP}, Admin Concent, 
-# https://docs.microsoft.com/en-us/azure/aks/azure-ad-integration-cli
-
-ADSERVER_APP="${CLUSTER_NAME}-ADServer"
-ADCLIENT_APP="${CLUSTER_NAME}-ADClient"
-echo "Creating Server app [${ADSERVER_APP}]..."
-serverAppId=$(az ad app create --display-name $ADSERVER_APP --native-app false --reply-urls "https://${ADSERVER_APP}" --query appId -o tsv)
-
-if [ -z "$serverAppId" ]; then
-  echo "Error, failed to create AAD app, this is normally transiant, please try running the script again"
-  if [ "$orig_tenant" ]; then
-    echo "Changing back to defalt tenant [${orig_tenant}] to create Cluster"
-    az login --tenant $orig_tenant >/dev/null
+  echo "Setting up AAD Integrated accounts....."
+  # Checking required tenant for the cluster federation
+  #
+  #
+  if [[  "$orig_tenant" ]]; then
+      echo "You have selected an alternative tenent for cluster RBAC users, you will need to auth so we can create the required Apps, press ENTER to continue.."
+      read
+      
+      az login --tenant $AAD_INTEGRATED_TENANT  --allow-no-subscriptions >/dev/null
   fi
-  exit 1
-fi
 
-echo "Created/Patched [${ADSERVER_APP}], appId: ${serverAppId}"
-# Update the application group memebership claims
-az ad app update --id $serverAppId --set groupMembershipClaims=All >/dev/null
+  # Get the user details to create the kubernetes role assignment
+  USER_DETAILS=$(az ad signed-in-user show --query "[objectId,userPrincipalName]" -o tsv)
+
+  # Can require either the ObjectId or UPN depending on where the user is homed
+  USER_OBJECTID=$(echo $USER_DETAILS | cut -f 1 -d ' ')
+  USER_UPN=$(echo $USER_DETAILS | cut -f 2 -d ' ')
+
+  echo "This is the user we will add to the Kubernetes RBAC objectId: [$(az ad  signed-in-user show --query objectId -o tsv)]"
 
 
-if [ -z "$skip_app_creation" ] ; then
-    # Now create a service principal for the server app (specific to granting permissions to resources in this tenant)
-    # Create a service principal for the Azure AD application
-    echo "Create a service principal for the app...."
-    az ad sp create --id $serverAppId >/dev/null
-fi
+  # Create the server application
+  # The Azure AD application you need gets Azure AD group membership for a user
 
-serverAppSecret=$(az ad sp credential reset --name $serverAppId --credential-description "AKSPassword" --query password -o tsv)
+  # Delegate permissions for : Directory.Read.All
+  # Applicaion permissions for : Directory.Read.All
+  # Expose an API : Scope: ${ADSERVER_APP}, Admin Concent, 
+  # https://docs.microsoft.com/en-us/azure/aks/azure-ad-integration-cli
 
-if [ -z "$skip_app_creation" ] ; then
-    # Get the service principal secret
-    echo "Adding directory permissions for Delegate & Applicaion to Directory.Read.All..."
-    az ad app permission add \
-        --id $serverAppId \
-        --api 00000003-0000-0000-c000-000000000000 \
-        --api-permissions e1fe6dd8-ba31-4d61-89e7-88639da4683d=Scope 06da0dbc-49e2-44d2-8312-53f166ab848a=Scope 7ab1d382-f21e-4acd-a863-ba3e13f7da61=Role
+  ADSERVER_APP="${CLUSTER_NAME}-ADServer"
+  ADCLIENT_APP="${CLUSTER_NAME}-ADClient"
+  echo "Creating Server app [${ADSERVER_APP}]..."
+  serverAppId=$(az ad app create --display-name $ADSERVER_APP --native-app false --reply-urls "https://${ADSERVER_APP}" --query appId -o tsv)
 
-    echo "Granting permissions..."
-    az ad app permission grant --id $serverAppId --api 00000003-0000-0000-c000-000000000000 >/dev/null
-    if [ $? -ne 0 ]; then
-        echo "Error: Please check you have Global Admin rights on the directory, and run the script again"
-        if [ "$orig_tenant" ]; then
-          echo "Changing back to defalt tenant [${orig_tenant}] to create Cluster"
-          az login --tenant $orig_tenant >/dev/null
-        fi
-        exit 1
+  if [ -z "$serverAppId" ]; then
+    echo "Error, failed to create AAD app, this is normally transiant, please try running the script again"
+    if [ "$orig_tenant" ]; then
+      echo "Changing back to defalt tenant [${orig_tenant}] to create Cluster"
+      az login --tenant $orig_tenant >/dev/null
     fi
-    echo "Granting permissions ADMIN-consent..."
-    az ad app permission admin-consent --id  $serverAppId >/dev/null
-fi
-
-#  Create the client application
-#  Used when a user logon interactivlty to the AKS cluster with the Kubernetes CLI (kubectl)
-echo "Creating Client app [${ADCLIENT_APP}]..."
-clientAppId=$(az ad app create  --display-name $ADCLIENT_APP --native-app --reply-urls "https://${ADCLIENT_APP}" --query appId -o tsv)
-
-if [ -z "$clientAppId" ]; then
-  echo "Error, failed to create AAD app, this is normally transiant, please try running the script again"
-  if [  "$orig_tenant" ]; then
-    echo "Changing back to defalt tenant [${orig_tenant}] to create Cluster"
-    az login --tenant $orig_tenant >/dev/null
+    exit 1
   fi
-  exit 1
-fi
 
-echo "Created/Patched ${ADCLIENT_APP}, AppId: ${clientAppId}"
+  echo "Created/Patched [${ADSERVER_APP}], appId: ${serverAppId}"
+  # Update the application group memebership claims
+  az ad app update --id $serverAppId --set groupMembershipClaims=All >/dev/null
 
 
-if [ -z "$skip_app_creation" ] ; then
-    echo "Create a service principal for the app...."
-    az ad sp create --id $clientAppId >/dev/null
+  if [ -z "$skip_app_creation" ] ; then
+      # Now create a service principal for the server app (specific to granting permissions to resources in this tenant)
+      # Create a service principal for the Azure AD application
+      echo "Create a service principal for the app...."
+      az ad sp create --id $serverAppId >/dev/null
+  fi
 
-    echo "Retreive the app outh permission id...."
-    oAuthPermissionId=$(az ad app show --id $serverAppId --query "oauth2Permissions[0].id" -o tsv)
+  serverAppSecret=$(az ad sp credential reset --name $serverAppId --credential-description "AKSPassword" --query password -o tsv)
 
-    echo "Adding the app permission....[${oAuthPermissionId}=Scope]"
-    az ad app permission add \
-        --id $clientAppId \
-        --api $serverAppId \
-        --api-permissions ${oAuthPermissionId}=Scope
+  if [ -z "$skip_app_creation" ] ; then
+      # Get the service principal secret
+      echo "Adding directory permissions for Delegate & Applicaion to Directory.Read.All..."
+      az ad app permission add \
+          --id $serverAppId \
+          --api 00000003-0000-0000-c000-000000000000 \
+          --api-permissions e1fe6dd8-ba31-4d61-89e7-88639da4683d=Scope 06da0dbc-49e2-44d2-8312-53f166ab848a=Scope 7ab1d382-f21e-4acd-a863-ba3e13f7da61=Role
 
-    echo "Granting permissions..."
-    az ad app permission grant --id $clientAppId --api $serverAppId >/dev/null
-fi
+      echo "Granting permissions..."
+      az ad app permission grant --id $serverAppId --api 00000003-0000-0000-c000-000000000000 >/dev/null
+      if [ $? -ne 0 ]; then
+          echo "Error: Please check you have Global Admin rights on the directory, and run the script again"
+          if [ "$orig_tenant" ]; then
+            echo "Changing back to defalt tenant [${orig_tenant}] to create Cluster"
+            az login --tenant $orig_tenant >/dev/null
+          fi
+          exit 1
+      fi
+      echo "Granting permissions ADMIN-consent..."
+      az ad app permission admin-consent --id  $serverAppId >/dev/null
+  fi
 
-if [ "$orig_tenant" ]; then
-    echo "Changing back to defalt tenant [${orig_tenant}] to create Cluster"
-    az login --tenant $orig_tenant >/dev/null
+  #  Create the client application
+  #  Used when a user logon interactivlty to the AKS cluster with the Kubernetes CLI (kubectl)
+  echo "Creating Client app [${ADCLIENT_APP}]..."
+  clientAppId=$(az ad app create  --display-name $ADCLIENT_APP --native-app --reply-urls "https://${ADCLIENT_APP}" --query appId -o tsv)
+
+  if [ -z "$clientAppId" ]; then
+    echo "Error, failed to create AAD app, this is normally transiant, please try running the script again"
+    if [  "$orig_tenant" ]; then
+      echo "Changing back to defalt tenant [${orig_tenant}] to create Cluster"
+      az login --tenant $orig_tenant >/dev/null
+    fi
+    exit 1
+  fi
+
+  echo "Created/Patched ${ADCLIENT_APP}, AppId: ${clientAppId}"
+
+
+  if [ -z "$skip_app_creation" ] ; then
+      echo "Create a service principal for the app...."
+      az ad sp create --id $clientAppId >/dev/null
+
+      echo "Retreive the app outh permission id...."
+      oAuthPermissionId=$(az ad app show --id $serverAppId --query "oauth2Permissions[0].id" -o tsv)
+
+      echo "Adding the app permission....[${oAuthPermissionId}=Scope]"
+      az ad app permission add \
+          --id $clientAppId \
+          --api $serverAppId \
+          --api-permissions ${oAuthPermissionId}=Scope
+
+      echo "Granting permissions..."
+      az ad app permission grant --id $clientAppId --api $serverAppId >/dev/null
+  fi
+
+  if [ "$orig_tenant" ]; then
+      echo "Changing back to defalt tenant [${orig_tenant}] to create Cluster"
+      az login --tenant $orig_tenant >/dev/null
+  fi
 fi
 
 # https://docs.microsoft.com/en-us/azure/aks/kubernetes-walkthrough-rm-template#create-a-service-principal

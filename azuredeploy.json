@@ -242,10 +242,10 @@
         }
     }, 
     "variables": {
-        "acrName": "[concat('acr', replace(parameters('resourceName'),'-', ''))]",
-        "vnetName": "[concat('vnet-', parameters('resourceName'))]",
-        "firewallName": "[concat('fw-', parameters('resourceName'))]",
-        "workspaceName": "[concat('workspace-', parameters('resourceName'))]",
+        "acrName": "[concat(replace(parameters('resourceName'),'-', ''), 'acr')]",
+        "vnetName": "[concat(parameters('resourceName'), '-vnet')]",
+        "firewallName": "[concat(parameters('resourceName'), '-fw')]",
+        "workspaceName": "[concat(parameters('resourceName'), '-workspace')]",
 
         "vnetAppGatewaySubnet": {
             "name": "AppGwIngressSubnet",
@@ -284,13 +284,18 @@
         "default_plus_appgw_fw_subnets" : "[if (parameters('azureFirewallEgress'), concat(array(variables('default_plus_appgw_subnets')),array(variables('vnetFirewallSubnet'))), array(variables('default_plus_appgw_subnets')))]",
         "default_plus_appgw_fw_onprem_subnets" : "[if (parameters('createOnPremGW'), concat(array(variables('default_plus_appgw_fw_subnets')),array(variables('vnetOnPremSubnet'))), array(variables('default_plus_appgw_fw_subnets')))]",
 
-
-        "routeFwTableName": "[concat('route-fw-', parameters('resourceName'))]",
-        "msiIdentityName": "[concat('appgwManagedIdentity' , replace(parameters('resourceName'),'-', ''))]",
+        "aks_integrated_AadProfile": {
+            "clientAppID": "[parameters('AAD_ClientAppID')]",
+            "serverAppID": "[parameters('AAD_ServerAppID')]",
+            "tenantID": "[parameters('AAD_TenantID')]",
+            "serverAppSecret": "[parameters('AAD_ServerAppSecret')]"
+        },
+        "routeFwTableName": "[concat(parameters('resourceName'), '-route-fw')]",
+        "msiIdentityName": "[concat(replace(parameters('resourceName'),'-', ''),'appgwIdentity')]",
         "msiIdentityId": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('msiIdentityName'))]",
-        "applicationGatewayName": "[concat('appgw-', parameters('resourceName'))]",
-        "applicationGatewayPublicIpName": "[concat('appgw-ip-', parameters('resourceName'))]",
-        "firewallPublicIpName": "[concat('fw-ip-', parameters('resourceName'))]",
+        "applicationGatewayName": "[concat(parameters('resourceName'), '-appgw' )]",
+        "applicationGatewayPublicIpName": "[concat(parameters('resourceName'), '-appgw-ip')]",
+        "firewallPublicIpName": "[concat(parameters('resourceName'), '-fw-ip')]",
         "webApplicationFirewallConfiguration": {
             "enabled": "true",
             "firewallMode": "Detection"
@@ -645,12 +650,7 @@
                 "kubernetesVersion": "[parameters('kubernetesVersion')]",
                 "enableRBAC": "[parameters('enableRBAC')]",
                 "dnsPrefix": "[parameters('dnsPrefix')]",
-                "aadProfile": {
-                    "clientAppID": "[parameters('AAD_ClientAppID')]",
-                    "serverAppID": "[parameters('AAD_ServerAppID')]",
-                    "tenantID": "[parameters('AAD_TenantID')]",
-                    "serverAppSecret": "[parameters('AAD_ServerAppSecret')]"
-                },
+                "aadProfile": "[if ( empty(parameters('AAD_TenantID')), json('null'), variables('aks_integrated_AadProfile') )]",
                 "addonProfiles": {
                     "omsagent": {
                         "enabled": "[parameters('azureContainerInsights')]",
