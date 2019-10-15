@@ -1,10 +1,31 @@
 # exit on error
 #set -e
 
+createVNET=""
+applicationGatewaySku=""
+azureFirewallEgress=""
+azureContainerInsights=""
+createOnPremGW=""
+acrSku=""
+networkPolicy=""
+networkPlugin=""
+skip_app_creation=""
+AAD_INTEGRATED_TENANT=""
+ipWhitelist=""
+armPolicy=""
+
 while getopts "n:sa:t:" opt; do
   case ${opt} in
     a )
       ADDONS=$OPTARG
+      if [[ $ADDONS =~ " vnet " ]]; then
+        createVNET="true"
+      fi
+
+      if [[ $ADDONS =~ " onprem " ]]; then
+        createOnPremGW="true"
+      fi
+
       if [[ $ADDONS =~ " appgw " ]]; then
         applicationGatewaySku="WAF_v2"
       fi
@@ -20,8 +41,14 @@ while getopts "n:sa:t:" opt; do
       if [[ $ADDONS =~ " acr " ]]; then
         acrSku="Basic"
       fi
-      if [[ $ADDONS =~ " networkPolicy " ]]; then
+      if [[ $ADDONS =~ " calico " ]]; then
         networkPolicy="calico"
+      fi
+      if [[ $ADDONS =~ " ipw " ]]; then
+        ipWhitelist="true"
+      fi
+      if [[ $ADDONS =~ " policy " ]]; then
+        armPolicy="true"
       fi
       ;;
     n )
@@ -46,14 +73,21 @@ while getopts "n:sa:t:" opt; do
     esac
 done
 
+## If 
+if [[ "$applicationGatewaySku" ||  "$azureFirewallEgress" || "$createOnPremGW" ]]; then
+  createVNET="true"
+fi
+
 shift $((OPTIND -1))
 
 if [ $# -ne 1 ] || [ -z "$networkPlugin" ] || [ "$show_usage" ]; then
     echo "Usage: $0 [-a <kured clusterautoscaler afw aci appgw acr>] [-n <kubenet|azure>] [-t tenentid] [-s] [<rg>/]<cluster_name>"
-    echo "Optional args:"
-    echo " -t: provide an alternative tenant id to secure your aks cluster users (you will need ADMIN rights on the tenant)"
+    echo "args:"
+    echo " <-n kubenet | azure> : Network plugin (required)"
+    echo " [-t   [tenantid]]: provide an alternative tenant id to secure your aks cluster users (you will need ADMIN rights on the tenant)"
+    echo " [-a: vnet onprem [nginx|appgw] afw kured aci acr calico ipw policy]"
     echo " -s: this will skip the recreation of the aad apps SPNs, (allowing re-running)"
-    echo " -a: addons (appgw kured aci)"
+
     exit 1
 fi
 
@@ -226,7 +260,8 @@ echo "[DEBUG] Creating Cluster script: az group deployment create -g $GROUP \
 --template-file ./azuredeploy.json \
 --parameters \
 resourceName=\"${CLUSTER_NAME}\" \
-dnsPrefix=\"${CLUSTER_NAME}\" \
+dnsPrefix=\"${CLUSTER_NAME}-dns\" \
+createVNET=\"${createVNET}\" \
 aksServicePrincipalObjectId=\"${AKS_SP_OBJECTID}\" \
 aksServicePrincipalClientId=\"${AKS_SP_APPID}\" \
 aksServicePrincipalClientSecret=\"${AKS_SP_SECRET}\" \
@@ -236,6 +271,7 @@ AAD_ServerAppSecret=\"${serverAppSecret}\" \
 AAD_ClientAppID=\"${clientAppId}\" \
 applicationGatewaySku=\"${applicationGatewaySku}\" \
 azureFirewallEgress=\"${azureFirewallEgress}\" \
+createOnPremGW=\"${createOnPremGW}\" \
 azureContainerInsights=\"${azureContainerInsights}\" \
 acrSku=\"${acrSku}\" \
 networkPolicy=\"${networkPolicy}\" \
@@ -318,7 +354,8 @@ while true; do
                 --template-file ./azuredeploy.json \
                 --parameters \
                     resourceName="${CLUSTER_NAME}" \
-                    dnsPrefix="${CLUSTER_NAME}" \
+                    dnsPrefix="${CLUSTER_NAME}-dns" \
+                    createVNET="${createVNET}" \
                     aksServicePrincipalObjectId="${AKS_SP_OBJECTID}" \
                     aksServicePrincipalClientId="${AKS_SP_APPID}" \
                     aksServicePrincipalClientSecret="${AKS_SP_SECRET}" \
@@ -327,8 +364,9 @@ while true; do
                     AAD_ServerAppSecret="${serverAppSecret}" \
                     AAD_ClientAppID="${clientAppId}" \
                     applicationGatewaySku="${applicationGatewaySku}" \
-                    azureFirewallEgress=${azureFirewallEgress} \
-                    azureContainerInsights=${azureContainerInsights} \
+                    azureFirewallEgress="${azureFirewallEgress}" \
+                    createOnPremGW="${createOnPremGW}" \
+                    azureContainerInsights="${azureContainerInsights}" \
                     acrSku="${acrSku}" \
                     networkPolicy="${networkPolicy}" \
                     networkPlugin="${networkPlugin}" \

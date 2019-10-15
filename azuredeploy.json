@@ -4,7 +4,6 @@
     "parameters": {
         "resourceName": {
             "type": "string",
-            "defaultValue": "aksadcluster",
             "metadata": {
                 "description": "The name of the Managed Cluster resource."
             }
@@ -18,7 +17,7 @@
         },
         "dnsPrefix": {
             "type": "string",
-            "defaultValue": "aksadcluster",
+            "defaultValue": "[concat(parameters('resourceName'), '-dns')]",
             "metadata": {
                 "description": "Optional DNS prefix to use with hosted Kubernetes API server FQDN."
             }
@@ -109,6 +108,10 @@
             "metadata": {
                 "description": "boolean flag to turn on and off of RBAC"
             }
+        },
+        "createVNET" : {
+            "type": "bool",
+            "defaultValue": false
         },
         "vnetAddressPrefix": {
             "type": "string",
@@ -333,6 +336,7 @@
             }
         },
         {
+            "condition": "[parameters('createVNET')]",
             "apiVersion": "2019-04-01",
             "type": "Microsoft.Network/virtualNetworks",
             "name": "[variables('vnetName')]",
@@ -668,7 +672,7 @@
                         "maxCount": 5,
                         "vmSize": "[parameters('agentVMSize')]",
                         "osType": "Linux",
-                        "vnetSubnetID": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('vnetAksSubnetName'))]",
+                        "vnetSubnetID": "[if(parameters('createVNET'), resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('vnetAksSubnetName')), json('null'))]",
                         "maxPods": "[parameters('maxPods')]",
                         "type": "VirtualMachineScaleSets",
                         "enableAutoScaling": true,
@@ -697,6 +701,7 @@
             ]
         },
         {
+            "condition": "[parameters('createVNET')]",
             "type": "Microsoft.Resources/deployments",
             "name": "NetworkRoleAssignmentForKubenetesSPN",
             "apiVersion": "2017-05-10",
