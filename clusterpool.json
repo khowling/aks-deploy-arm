@@ -4,21 +4,21 @@
   "parameters": {
       "clusterName": {
           "type": "string",
-          "defaultValue":"myAKSCluster",
+          "defaultValue":"khcluster2",
           "metadata": {
               "description": "The name of the Managed Cluster resource."
           }
       },
       "agentPoolName": {
           "type": "string",
-          "defaultValue":"agentpool",
+          "defaultValue":"lowpool",
           "metadata": {
               "description": "The name of the agent pool."
           }
       },
       "count": {
           "type": "int",
-          "defaultValue": 3,
+          "defaultValue": 2,
           "metadata": {
               "description": "The number of nodes for the node pool."
           },
@@ -61,7 +61,7 @@
       },
       "orchestratorVersion": {
           "type": "string",
-          "defaultValue": "1.13.5",
+          "defaultValue": "1.13.11",
           "allowedValues": [
             "1.10.12",
             "1.10.13",
@@ -69,7 +69,7 @@
             "1.11.9",
             "1.12.7",
             "1.12.8",
-            "1.13.5",
+            "1.13.11",
             "1.14.0"
           ],
           "metadata": {
@@ -84,8 +84,7 @@
             "Regular"
           ],
           "metadata": {
-              "description": "Priority of the nodes assigned to the
-scale set backing the node pool."
+              "description": "Priority of the nodes assigned to the scale set backing the node pool."
           }
       },
       "maxPods": {
@@ -113,8 +112,7 @@ scale set backing the node pool."
           "type": "int",
           "defaultValue": 5,
           "metadata": {
-              "description": "Maximum number of nodes for auto-scaling.
-This value should match the count value for the node pool."
+              "description": "Maximum number of nodes for auto-scaling. This value should match the count value for the node pool."
           }
       }
   },
@@ -132,7 +130,7 @@ This value should match the count value for the node pool."
             "type": "[parameters('type')]",
             "orchestratorVersion": "[parameters('orchestratorVersion')]",
             "ScaleSetPriority": "[parameters('ScaleSetPriority')]",
-            "ScaleSetEvictionPolicy": "Delete",
+            "ScaleSetEvictionPolicy": "Deallocate",
             "nodeTaints": [
                 "pooltype=lowpri:NoSchedule"
             ],

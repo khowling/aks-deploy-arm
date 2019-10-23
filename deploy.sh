@@ -13,6 +13,10 @@ skip_app_creation=""
 AAD_INTEGRATED_TENANT=""
 ipWhitelist=""
 armPolicy=""
+nginxIngress=""
+dns_rg=""
+dns_zone=""
+certEmail=""
 
 while getopts "n:sa:t:" opt; do
   case ${opt} in
@@ -32,6 +36,22 @@ while getopts "n:sa:t:" opt; do
 
       if [[ $ADDONS =~ " afw " ]]; then
         azureFirewallEgress="true"
+      fi
+
+      if [[ $ADDONS =~ " nginx " ]]; then
+        nginxIngress="true"
+      fi
+
+      if [[ $ADDONS =~ " dns=" ]]; then
+        dns_zone_info=($(echo $ADDONS | sed  -n 's/.*dns=\([^ ]*\).*/\1/p'))
+        dns_args=($(echo "$dns_zone_info" | tr "/" "\n"))
+        dns_rg=${dns_args[0]}
+        dns_zone=${dns_args[1]}
+        
+      fi
+
+      if [[ $ADDONS =~ " cert=" ]]; then
+        certEmail=($(echo $ADDONS | sed  -n 's/.*cert=\([[:alnum:]@\._-]*\).*/\1/p'))
       fi
 
       if [[ $ADDONS =~ " aci " ]]; then
@@ -58,11 +78,11 @@ while getopts "n:sa:t:" opt; do
       skip_app_creation="true"
       ;;
     t ) 
-      if [[ "$OPTARG" ]]; then
+      if [[ "$OPTARG" = "current" ]]; then
+        AAD_INTEGRATED_TENANT=$(az account show --query tenantId --output tsv)
+      else
         AAD_INTEGRATED_TENANT=$OPTARG
         orig_tenant=$(az account  show --query tenantId -o tsv)
-      else
-        AAD_INTEGRATED_TENANT=$(az account show --query tenantId --output tsv)
       fi
       ;;
     \? )
@@ -81,11 +101,11 @@ fi
 shift $((OPTIND -1))
 
 if [ $# -ne 1 ] || [ -z "$networkPlugin" ] || [ "$show_usage" ]; then
-    echo "Usage: $0 [-a <kured clusterautoscaler afw aci appgw acr>] [-n <kubenet|azure>] [-t tenentid] [-s] [<rg>/]<cluster_name>"
+    echo "Usage: $0 [-a OPTS] [-n <kubenet|azure>] [-t [tenentid]] [-s] [<rg>/]<cluster_name>"
     echo "args:"
     echo " <-n kubenet | azure> : Network plugin (required)"
-    echo " [-t   [tenantid]]: provide an alternative tenant id to secure your aks cluster users (you will need ADMIN rights on the tenant)"
-    echo " [-a: vnet onprem [nginx|appgw] afw kured aci acr calico ipw policy]"
+    echo " [-t [tenantid]]: provide an alternative tenant id to secure your aks cluster users (you will need ADMIN rights on the tenant)"
+    echo " [-a: vnet onprem [nginx|appgw] dns=<resource_grounp> cert=<cert_email> afw kured aci acr calico ipw policy]"
     echo " -s: this will skip the recreation of the aad apps SPNs, (allowing re-running)"
 
     exit 1
@@ -276,6 +296,8 @@ azureContainerInsights=\"${azureContainerInsights}\" \
 acrSku=\"${acrSku}\" \
 networkPolicy=\"${networkPolicy}\" \
 networkPlugin=\"${networkPlugin}\" \
+dnsZoneRG=\"${dns_rg}\" \
+dnsZoneName=\"${dns_zone}\" \
 "
 
 
@@ -309,13 +331,16 @@ function setup_cluster {
     kubectl apply -f ./helm-rbac.yaml
     helm init --service-account tiller --node-selectors "beta.kubernetes.io/os"="linux"
 
+    echo "Waiting 10s for ready tiller pod...."
+    sleep 10s
+
+    # Depends on applicationGatewayName dns etc
+    echo "Install the AAD POD Identity into the cluster ( Managed Identity Controller (MIC) deployment, the Node Managed Identity (NMI) daemon)..."
+    kubectl apply -f https://raw.githubusercontent.com/Azure/aad-pod-identity/master/deploy/infra/deployment-rbac.yaml
+
 
     if [ "$applicationGatewayName" ]; then
         echo "Deploying the AppGW ingress controller"
-
-
-        echo "Install the AAD POD Identity into the cluster ( Managed Identity Controller (MIC) deployment, the Node Managed Identity (NMI) daemon)..."
-        kubectl apply -f https://raw.githubusercontent.com/Azure/aad-pod-identity/master/deploy/infra/deployment-rbac.yaml
 
         echo "Add the helm repo for Application Gateway Ingress Controller..."
         helm repo add application-gateway-kubernetes-ingress https://appgwingress.blob.core.windows.net/ingress-azure-helm-package/
@@ -324,7 +349,7 @@ function setup_cluster {
 
         echo "Installing the Chart..."
         helm install application-gateway-kubernetes-ingress/ingress-azure \
-            --name ingress-azure \
+            --name template-ingress-azure \
             --namespace default \
             --set appgw.name=$applicationGatewayName \
             --set appgw.resourceGroup=$group \
@@ -339,10 +364,62 @@ function setup_cluster {
             --set aksClusterConfiguration.apiServerAddress=$cluster_api_url
 
     fi
+
+    if [ "$nginxIngress" ]; then
+        echo "Deploying the NGINX ingress controller"
+        helm install --name template-nginx-ingress --set controller.publishService.enabled=true  stable/nginx-ingress
+    fi
+
+    if [[ "$dns_rg" ]]; then
+      echo "Deploying Azure DNS Zone controller, (Zone in rg: ${dns_rg})"
+      # wget -qO - https://raw.githubusercontent.com/khowling/go-private-dns/master/deploy.yaml | sed -e 's/<<rg>>/'"$dns_rg"'/' -e  's/<<subid>>/'"$(az account show --query id -o tsv)"'/' | kubectl apply -f - 
+
+      helm install  https://github.com/khowling/go-private-dns/blob/master/helm/azure-dns-controller-0.1.0.tgz?raw=true \
+        --name template-dns-controller \
+        --set controllerConfig.resourceGroup=$dns_rg \
+        --set controllerConfig.subscriptionId=$(az account show --query id -o tsv) \
+        --set managedIdentity.identityClientId=$msi_clientid \
+        --set managedIdentity.identityResourceId=$msi_resourceid
+
+    fi
+
+    if [[ "$certEmail" ]]; then
+      echo "Deploying cert-manager"
+      # Create the namespace for cert-managers
+      kubectl create namespace cert-manager
+      
+      kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v0.11.0/cert-manager.yaml  --validate=false
+
+      echo "Creating letsencrypt-prod Issuer with email ${certEmail} (sleeping 30s to allow webhook)"
+      sleep 30s
+
+      cat <<EOF | kubectl create -f -
+apiVersion: cert-manager.io/v1alpha2
+kind: Issuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    # The ACME server URL
+    server: https://acme-v02.api.letsencrypt.org/directory
+    # Email address used for ACME registration
+    email: "$certEmail"
+    # Name of a secret used to store the ACME account private key
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    # Enable the HTTP-01 challenge provider
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
+EOF
+
+    fi
+    
 }
 
-echo "Sleeping for 3minutes before applying template to allow AAD propergation, please wait...."
-sleep 3m
+echo "Sleeping for 4minutes before applying template to allow AAD propergation, please wait...."
+sleep 4m
 yn="y"
 
 while true; do
@@ -370,6 +447,8 @@ while true; do
                     acrSku="${acrSku}" \
                     networkPolicy="${networkPolicy}" \
                     networkPlugin="${networkPlugin}" \
+                    dnsZoneRG="${dns_rg}" \
+                    dnsZoneName="${dns_zone}" \
                      --query "[properties.outputs.controlPlaneFQDN.value,properties.outputs.applicationGatewayName.value,properties.outputs.msiIdentityResourceId.value,properties.outputs.msiIdentityClientId.value]" --output tsv)
 
             if [ $? -eq 0 ] ; then
