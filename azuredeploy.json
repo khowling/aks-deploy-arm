@@ -109,6 +109,18 @@
                 "description": "boolean flag to turn on and off of RBAC"
             }
         },
+        "dnsZoneRG": {
+            "type": "string",
+            "metadata": {
+              "description": "Azure DNS Zone RG (add permissions)"
+            }
+        },
+        "dnsZoneName": {
+            "type": "string",
+            "metadata": {
+              "description": "Azure DNS Zone name (add permissions)"
+            }
+        },
         "createVNET" : {
             "type": "bool",
             "defaultValue": false
@@ -294,7 +306,7 @@
             "serverAppSecret": "[parameters('AAD_ServerAppSecret')]"
         },
         "routeFwTableName": "[concat(parameters('resourceName'), '-route-fw')]",
-        "msiIdentityName": "[concat(replace(parameters('resourceName'),'-', ''),'appgwIdentity')]",
+        "msiIdentityName": "[concat(replace(parameters('resourceName'),'-', ''),'ingresIdentity')]",
         "msiIdentityId": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('msiIdentityName'))]",
         "applicationGatewayName": "[concat(parameters('resourceName'), '-appgw' )]",
         "applicationGatewayPublicIpName": "[concat(parameters('resourceName'), '-appgw-ip')]",
@@ -306,12 +318,13 @@
         "readerRole": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', 'acdd72a7-3385-48ef-bd42-f606fba81ae7')]",
         "networkContributorRole": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', '4d97b98b-1d4f-4787-a291-c67834d212e7')]",
         "appGwContributorRole": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+        "dnsZoneContributor": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', 'befefa01-2a29-4197-83a8-272ff33ce314')]",
         "AcrPullRole": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', '7f951dda-4ed3-4680-a7ca-43fe172d538d')]",
         "managedIdentityOperatorRole": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', 'f1a07417-d97a-45cb-824c-7a7467783830')]"
     },
     "resources": [
         {
-            "condition": "[not(empty(parameters('applicationGatewaySku')))]",
+            "condition": "[not(and( empty(parameters('dnsZoneRG')), empty(parameters('applicationGatewaySku'))))]",
             "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
             "name": "[variables('msiIdentityName')]",
             "apiVersion": "2018-11-30",
@@ -761,7 +774,7 @@
         {
             "condition": "[not(empty(parameters('applicationGatewaySku')))]",
             "type": "Microsoft.Resources/deployments",
-            "name": "ClusterRoleAssignmentDeploymentForMSI",
+            "name": "ClusterRoleAssignmentDeploymentForAppGW",
             "apiVersion": "2017-05-10",
             "properties": {
                 "mode": "Incremental",
@@ -808,6 +821,54 @@
             "dependsOn": [
                 "[concat('Microsoft.Network/applicationgateways/', variables('applicationGatewayName'))]"
             ]
+        },
+        {
+            "condition": "[not(empty(parameters('dnsZoneRG')))]",
+            "type": "Microsoft.Resources/deployments",
+            "name": "ClusterRoleAssignmentDeploymentForDNSZone",
+            "apiVersion": "2017-05-10",
+            "properties": {
+                "mode": "Incremental",
+                "template": {
+                    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {},
+                    "variables": {},
+                    "resources": [
+                        {
+                            "type": "Microsoft.Network/dnsZones/providers/roleAssignments",
+                            "apiVersion": "2017-05-01",
+                            "name": "[concat(parameters('dnsZoneName'), '/Microsoft.Authorization/', guid(resourceGroup().id, 'identitydnsaccess'))]",
+                            "properties": {
+                                "roleDefinitionId": "[variables('dnsZoneContributor')]",
+                                "principalId": "[if (empty(parameters('dnsZoneRG')), '', reference(variables('msiIdentityId'), '2018-11-30').principalId)]",
+                                "scope": "[resourceId(parameters('dnsZoneRG'), 'Microsoft.Network/dnsZones', parameters('dnsZoneName'))]"
+                            }
+                        },
+                        {
+                            "type": "Microsoft.Authorization/roleAssignments",
+                            "apiVersion": "2017-05-01",
+                            "name": "[guid(resourceGroup().id, 'identityrgaccess')]",
+                            "properties": {
+                                "roleDefinitionId": "[variables('readerRole')]",
+                                "principalId": "[if (empty(parameters('dnsZoneRG')), '', reference(variables('msiIdentityId'), '2018-11-30').principalId)]",
+                                "scope": "[resourceId('Microsoft.Resources/resourceGroups', parameters('dnsZoneRG'))]"
+                            }
+                        },
+                        {
+                            "type": "Microsoft.ManagedIdentity/userAssignedIdentities/providers/roleAssignments",
+                            "apiVersion": "2017-05-01",
+                            "name": "[concat(variables('msiIdentityName'), '/Microsoft.Authorization/', guid(resourceGroup().id, 'aksidentityaccess'))]",
+                            "properties": {
+                                "roleDefinitionId": "[variables('managedIdentityOperatorRole')]",
+                                "principalId": "[parameters('aksServicePrincipalObjectId')]",
+                                "scope": "[variables('msiIdentityId')]",
+                                "principalType": "ServicePrincipal"
+                            }
+                        }
+                    ]
+                }
+            }
         }
        
     ],
