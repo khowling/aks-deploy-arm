@@ -339,7 +339,7 @@ function setup_cluster {
     kubectl apply -f https://raw.githubusercontent.com/Azure/aad-pod-identity/master/deploy/infra/deployment-rbac.yaml
 
 
-    if [ "$applicationGatewayName" ]; then
+    if [ "$applicationGatewayName" != "-" ]; then
         echo "Deploying the AppGW ingress controller"
 
         echo "Add the helm repo for Application Gateway Ingress Controller..."

@@ -819,13 +819,46 @@
                 }
             },
             "dependsOn": [
-                "[concat('Microsoft.Network/applicationgateways/', variables('applicationGatewayName'))]"
+                "[concat('Microsoft.Network/applicationgateways/', variables('applicationGatewayName'))]",
+                "[concat('Microsoft.ManagedIdentity/userAssignedIdentities/', variables('msiIdentityName'))]"
             ]
         },
         {
             "condition": "[not(empty(parameters('dnsZoneRG')))]",
             "type": "Microsoft.Resources/deployments",
             "name": "ClusterRoleAssignmentDeploymentForDNSZone",
+            "apiVersion": "2017-05-10",
+            "properties": {
+                "mode": "Incremental",
+                "template": {
+                    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {},
+                    "variables": {},
+                    "resources": [
+                        {
+                            "type": "Microsoft.ManagedIdentity/userAssignedIdentities/providers/roleAssignments",
+                            "apiVersion": "2017-05-01",
+                            "name": "[concat(variables('msiIdentityName'), '/Microsoft.Authorization/', guid(resourceGroup().id, 'aksidentityaccess'))]",
+                            "properties": {
+                                "roleDefinitionId": "[variables('managedIdentityOperatorRole')]",
+                                "principalId": "[parameters('aksServicePrincipalObjectId')]",
+                                "scope": "[variables('msiIdentityId')]",
+                                "principalType": "ServicePrincipal"
+                            }
+                        }
+                    ]
+                }
+            },
+            "dependsOn": [
+                "[concat('Microsoft.ManagedIdentity/userAssignedIdentities/', variables('msiIdentityName'))]"
+            ]
+        },
+        {
+            "condition": "[not(empty(parameters('dnsZoneRG')))]",
+            "resourceGroup": "[parameters('dnsZoneRG')]",
+            "type": "Microsoft.Resources/deployments",
+            "name": "ClusterRoleAssignmentDeploymentForDNSZoneinRG",
             "apiVersion": "2017-05-10",
             "properties": {
                 "mode": "Incremental",
@@ -852,25 +885,17 @@
                             "properties": {
                                 "roleDefinitionId": "[variables('readerRole')]",
                                 "principalId": "[if (empty(parameters('dnsZoneRG')), '', reference(variables('msiIdentityId'), '2018-11-30').principalId)]",
-                                "scope": "[resourceId('Microsoft.Resources/resourceGroups', parameters('dnsZoneRG'))]"
-                            }
-                        },
-                        {
-                            "type": "Microsoft.ManagedIdentity/userAssignedIdentities/providers/roleAssignments",
-                            "apiVersion": "2017-05-01",
-                            "name": "[concat(variables('msiIdentityName'), '/Microsoft.Authorization/', guid(resourceGroup().id, 'aksidentityaccess'))]",
-                            "properties": {
-                                "roleDefinitionId": "[variables('managedIdentityOperatorRole')]",
-                                "principalId": "[parameters('aksServicePrincipalObjectId')]",
-                                "scope": "[variables('msiIdentityId')]",
-                                "principalType": "ServicePrincipal"
+                                "scope": "[concat(subscription().id, '/resourceGroups/', parameters('dnsZoneRG'))]"
                             }
                         }
                     ]
                 }
-            }
+            },
+            "dependsOn": [
+                "[concat('Microsoft.ManagedIdentity/userAssignedIdentities/', variables('msiIdentityName'))]",
+                "[concat('Microsoft.ContainerService/managedClusters/', parameters('resourceName'))]"
+            ]
         }
-       
     ],
     "outputs": {
         "controlPlaneFQDN": {
@@ -879,15 +904,15 @@
         },
         "applicationGatewayName": {
             "type": "string",
-            "value": "[if(empty(parameters('applicationGatewaySku')),'',variables('applicationGatewayName'))]"
+            "value": "[if(empty(parameters('applicationGatewaySku')),'-',variables('applicationGatewayName'))]"
         },
         "msiIdentityResourceId": {
             "type": "string",
-            "value": "[if(empty(parameters('applicationGatewaySku')),'',variables('msiIdentityId'))]"
+            "value": "[if( and( empty(parameters('dnsZoneRG')), empty(parameters('applicationGatewaySku'))),'-',variables('msiIdentityId'))]"
         },
         "msiIdentityClientId": {
             "type": "string",
-            "value": "[if(empty(parameters('applicationGatewaySku')),'',reference(variables('msiIdentityId'), '2018-11-30').clientId)]"
+            "value": "[if(and( empty(parameters('dnsZoneRG')), empty(parameters('applicationGatewaySku'))),'-',reference(variables('msiIdentityId'), '2018-11-30').clientId)]"
         }
         
     }
