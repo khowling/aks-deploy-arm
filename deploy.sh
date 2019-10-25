@@ -22,27 +22,27 @@ while getopts "n:sa:t:" opt; do
   case ${opt} in
     a )
       ADDONS=$OPTARG
-      if [[ $ADDONS =~ " vnet " ]]; then
+      if [[ $ADDONS =~ "vnet" ]]; then
         createVNET="true"
       fi
 
-      if [[ $ADDONS =~ " onprem " ]]; then
+      if [[ $ADDONS =~ "onprem" ]]; then
         createOnPremGW="true"
       fi
 
-      if [[ $ADDONS =~ " appgw " ]]; then
+      if [[ $ADDONS =~ "appgw" ]]; then
         applicationGatewaySku="WAF_v2"
       fi
 
-      if [[ $ADDONS =~ " afw " ]]; then
+      if [[ $ADDONS =~ "afw" ]]; then
         azureFirewallEgress="true"
       fi
 
-      if [[ $ADDONS =~ " nginx " ]]; then
+      if [[ $ADDONS =~ "nginx" ]]; then
         nginxIngress="true"
       fi
 
-      if [[ $ADDONS =~ " dns=" ]]; then
+      if [[ $ADDONS =~ "dns=" ]]; then
         dns_zone_info=($(echo $ADDONS | sed  -n 's/.*dns=\([^ ]*\).*/\1/p'))
         dns_args=($(echo "$dns_zone_info" | tr "/" "\n"))
         dns_rg=${dns_args[0]}
@@ -50,24 +50,24 @@ while getopts "n:sa:t:" opt; do
         
       fi
 
-      if [[ $ADDONS =~ " cert=" ]]; then
+      if [[ $ADDONS =~ "cert=" ]]; then
         certEmail=($(echo $ADDONS | sed  -n 's/.*cert=\([[:alnum:]@\._-]*\).*/\1/p'))
       fi
 
-      if [[ $ADDONS =~ " aci " ]]; then
+      if [[ $ADDONS =~ "aci" ]]; then
         azureContainerInsights="true"
       fi
 
-      if [[ $ADDONS =~ " acr " ]]; then
+      if [[ $ADDONS =~ "acr" ]]; then
         acrSku="Basic"
       fi
-      if [[ $ADDONS =~ " calico " ]]; then
+      if [[ $ADDONS =~ "calico" ]]; then
         networkPolicy="calico"
       fi
-      if [[ $ADDONS =~ " ipw " ]]; then
+      if [[ $ADDONS =~ "ipw" ]]; then
         ipWhitelist="true"
       fi
-      if [[ $ADDONS =~ " policy " ]]; then
+      if [[ $ADDONS =~ "policy" ]]; then
         armPolicy="true"
       fi
       ;;
@@ -415,19 +415,24 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: nginx
+          class: $ingress_class
 EOF
 
-      demoapp_url="ecomm.${CLUSTER_NAME}.${dns_zone}"
-      echo "Installing Demo eCommerce app ${demoapp_url}"
+      if [[ "$ingress_class" ]]; then
+        echo "Creating Certificate, waiting 2m to allow cert-manager to verify the domain (will create/delete a ingress)"
+        sleep 3m
 
-      helm install https://github.com/khowling/aks-ecomm-demo/blob/master/helm/aks-ecomm-demo-0.1.0.tgz?raw=true \
-        --set name=ecommerce-demo \
-        --set ingress.enabled=True,ingress.hosts[0].host="${demoapp_url}" \
-        --set ingress.tls[0].secretName="tls-secret",ingress.tls[0].hosts[0]="${demoapp_url}" \
-        --set ingress.annotations."kubernetes\.io/ingress\.class"="${ingress_class}" \
-        --set ingress.annotations."cert-manager\.io/cluster-issuer"="letsencrypt-prod"  \
-        --set ingress.enabled=True,ingress.hosts[0].paths[0]="/"
+        demoapp_url="ecomm.${CLUSTER_NAME}.${dns_zone}"
+        echo "Installing Demo eCommerce app ${demoapp_url}"
+
+        helm install https://github.com/khowling/aks-ecomm-demo/blob/master/helm/aks-ecomm-demo-0.1.0.tgz?raw=true \
+          --set name=ecommerce-demo \
+          --set ingress.enabled=True,ingress.hosts[0].host="${demoapp_url}" \
+          --set ingress.tls[0].secretName="tls-secret",ingress.tls[0].hosts[0]="${demoapp_url}" \
+          --set ingress.annotations."kubernetes\.io/ingress\.class"="${ingress_class}" \
+          --set ingress.annotations."cert-manager\.io/cluster-issuer"="letsencrypt-prod"  \
+          --set ingress.enabled=True,ingress.hosts[0].paths[0]="/"
+      fi
     fi
 }
 
