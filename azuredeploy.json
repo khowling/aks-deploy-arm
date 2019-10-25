@@ -797,22 +797,11 @@
                         {
                             "type": "Microsoft.Authorization/roleAssignments",
                             "apiVersion": "2017-05-01",
-                            "name": "[guid(resourceGroup().id, 'identityrgaccess')]",
+                            "name": "[guid(resourceGroup().id, 'identityappgwrgaccess')]",
                             "properties": {
                                 "roleDefinitionId": "[variables('readerRole')]",
                                 "principalId": "[if (empty(parameters('applicationGatewaySku')), '', reference(variables('msiIdentityId'), '2018-11-30').principalId)]",
                                 "scope": "[resourceGroup().id]"
-                            }
-                        },
-                        {
-                            "type": "Microsoft.ManagedIdentity/userAssignedIdentities/providers/roleAssignments",
-                            "apiVersion": "2017-05-01",
-                            "name": "[concat(variables('msiIdentityName'), '/Microsoft.Authorization/', guid(resourceGroup().id, 'aksidentityaccess'))]",
-                            "properties": {
-                                "roleDefinitionId": "[variables('managedIdentityOperatorRole')]",
-                                "principalId": "[parameters('aksServicePrincipalObjectId')]",
-                                "scope": "[variables('msiIdentityId')]",
-                                "principalType": "ServicePrincipal"
                             }
                         }
                     ]
@@ -824,7 +813,7 @@
             ]
         },
         {
-            "condition": "[not(empty(parameters('dnsZoneRG')))]",
+            "condition": "[or(not(empty(parameters('dnsZoneRG'))), not(empty(parameters('applicationGatewaySku'))) ) ]",
             "type": "Microsoft.Resources/deployments",
             "name": "ClusterRoleAssignmentDeploymentForDNSZone",
             "apiVersion": "2017-05-10",
@@ -881,7 +870,7 @@
                         {
                             "type": "Microsoft.Authorization/roleAssignments",
                             "apiVersion": "2017-05-01",
-                            "name": "[guid(resourceGroup().id, 'identityrgaccess')]",
+                            "name": "[guid(resourceGroup().id, 'identitydnsrgaccess')]",
                             "properties": {
                                 "roleDefinitionId": "[variables('readerRole')]",
                                 "principalId": "[if (empty(parameters('dnsZoneRG')), '', reference(variables('msiIdentityId'), '2018-11-30').principalId)]",

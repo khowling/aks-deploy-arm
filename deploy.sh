@@ -360,9 +360,9 @@ function setup_cluster {
             --set armAuth.identityClientID=$msi_clientid \
             --set rbac.enabled=true \
             --set verbosityLevel=3 \
-            --set kubernetes.watchNamespace=$NAMESPACE \
             --set aksClusterConfiguration.apiServerAddress=$cluster_api_url
-
+            
+#  --set kubernetes.watchNamespace=$NAMESPACE \
     fi
 
     if [ "$nginxIngress" ]; then
