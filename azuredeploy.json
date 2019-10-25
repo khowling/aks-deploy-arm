@@ -840,7 +840,8 @@
                 }
             },
             "dependsOn": [
-                "[concat('Microsoft.ManagedIdentity/userAssignedIdentities/', variables('msiIdentityName'))]"
+                "[concat('Microsoft.ManagedIdentity/userAssignedIdentities/', variables('msiIdentityName'))]",
+                "[concat('Microsoft.ContainerService/managedClusters/', parameters('resourceName'))]"
             ]
         },
         {

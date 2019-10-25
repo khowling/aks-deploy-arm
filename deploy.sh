@@ -270,7 +270,8 @@ if [ -z "$AKS_SP_APPID" ]; then
   exit 1
 fi
 
-echo "Created SPN appId: ${AKS_SP_APPID}"
+echo "Created SPN appId: ${AKS_SP_APPID}, getting objectID (sleep 5s)"
+sleep 5s
 AKS_SP_OBJECTID=$(az ad sp show --id $AKS_SP_APPID --query objectId -o tsv)
 
 #  for ARM AKS format, see https://docs.microsoft.com/en-us/azure/templates/microsoft.containerservice/2019-02-01/managedclusters
@@ -338,9 +339,10 @@ function setup_cluster {
     echo "Install the AAD POD Identity into the cluster ( Managed Identity Controller (MIC) deployment, the Node Managed Identity (NMI) daemon)..."
     kubectl apply -f https://raw.githubusercontent.com/Azure/aad-pod-identity/master/deploy/infra/deployment-rbac.yaml
 
-
+    ingress_class=""
     if [ "$applicationGatewayName" != "-" ]; then
         echo "Deploying the AppGW ingress controller"
+        ingress_class="azure/application-gateway"
 
         echo "Add the helm repo for Application Gateway Ingress Controller..."
         helm repo add application-gateway-kubernetes-ingress https://appgwingress.blob.core.windows.net/ingress-azure-helm-package/
@@ -351,6 +353,7 @@ function setup_cluster {
         helm install application-gateway-kubernetes-ingress/ingress-azure \
             --name template-ingress-azure \
             --namespace default \
+            --set image.tag=0.10.0-rc4 \
             --set appgw.name=$applicationGatewayName \
             --set appgw.resourceGroup=$group \
             --set appgw.subscriptionId=$(az account show --query id -o tsv) \
@@ -367,6 +370,7 @@ function setup_cluster {
 
     if [ "$nginxIngress" ]; then
         echo "Deploying the NGINX ingress controller"
+        ingress_class="nginx"
         helm install --name template-nginx-ingress --set controller.publishService.enabled=true  stable/nginx-ingress
     fi
 
@@ -390,12 +394,12 @@ function setup_cluster {
       
       kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v0.11.0/cert-manager.yaml  --validate=false
 
-      echo "Creating letsencrypt-prod Issuer with email ${certEmail} (sleeping 30s to allow webhook)"
+      echo "Creating letsencrypt-prod ClusterIssuer with email ${certEmail} (sleeping 30s to allow webhook)"
       sleep 30s
 
       cat <<EOF | kubectl create -f -
 apiVersion: cert-manager.io/v1alpha2
-kind: Issuer
+kind: ClusterIssuer
 metadata:
   name: letsencrypt-prod
 spec:
@@ -414,8 +418,17 @@ spec:
           class: nginx
 EOF
 
+      demoapp_url="ecomm.${CLUSTER_NAME}.${dns_zone}"
+      echo "Installing Demo eCommerce app ${demoapp_url}"
+
+      helm install https://github.com/khowling/aks-ecomm-demo/blob/master/helm/aks-ecomm-demo-0.1.0.tgz?raw=true \
+        --set name=ecommerce-demo \
+        --set ingress.enabled=True,ingress.hosts[0].host="${demoapp_url}" \
+        --set ingress.tls[0].secretName="tls-secret",ingress.tls[0].hosts[0]="${demoapp_url}" \
+        --set ingress.annotations."kubernetes\.io/ingress\.class"="${ingress_class}" \
+        --set ingress.annotations."cert-manager\.io/cluster-issuer"="letsencrypt-prod"  \
+        --set ingress.enabled=True,ingress.hosts[0].paths[0]="/"
     fi
-    
 }
 
 echo "Sleeping for 4minutes before applying template to allow AAD propergation, please wait...."
