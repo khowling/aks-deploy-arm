@@ -25,28 +25,35 @@ One size does not fill all! To allow this script to be relevent for requirements
 ## Running the Script
 
 There a 2 ways to lauch the script
-* The **highly** recommended way is to use this [app(TBC)](#) to guide you through a series of questions where you can specify your operational needs, this outputs the command line you can then paste to launch the script
-* You can manaully run the script, constructing your own command line options
+* The **highly** recommended way is to use this **[app](https://khcommon.z6.web.core.windows.net?v=v1.7)** to guide you through a series of questions where you can specify your operational needs, this outputs the command line you can then paste to launch the script
+* Alternativly, you can manaully run the script, constructing your own command line options, this is a great option once you have been through the app once, and you want to add to your automated release process
 
 
     ```
-    Usage: ./deploy.sh [-a "OPTS"] [-n <kubenet|azure>] [-t [tenentid]] [<rg>/]<cluster_name>
+    Usage: ./deploy.sh ARGS [<rg>/]<cluster_name>
     args:
-     * -n <kubenet | azure> : Network plugin (required)
-     * -t [tenantid]: integate with aad, and optionally provide an alternative tenant id to secure your aks cluster users (you will need ADMIN rights on the tenant)
-     * -a: a space delimited string with conditional provisioning arge:
-          * vnet : Create a custom VNET 
-          * onprem : Create a Gateway Subnet for on-orem ExpressRoute or VPN Gateway
-          * [nginx|appgw] : Setup HTTP/S Ingress
-          * dns=resource_grounp/zone : Setup automatic dns registration (requires Azure DNS Zone)
-          * cert=<cert_email> : Setup Lets Encrypt Cert generation
-          * afw : Provision and Confgiure Azure Firewall for locked down egress
-          * kured : addon
-          * aci : Azure Container Insights Addon
-          * acr : Provision Azure Container Registry
-          * calico : enable network policy
-          * ipw: enable IP Whitelist
-          * policy : 
+    <-l location> : Azure Region (required)
+    [-c node count] : Mumber of virtual machine agent nodes in cluster (default 3)
+    [-n kubenet | azure] : AKS network plugin (default: azure)
+    [-v VM SKU ] : virtual machine size (default: Standard_D2s_v3)
+    [-o OS-disksize ] : virtial machine OS disk size (defaults to VM default)
+    [-t [tenantId]]: Use AAD Integration. If [tenantId] provided, an that alternative tenant id (YOU WILL NEED GLOBAL ADMIN role)
+    [-a: features] : Can provide one or multiple features:
+        clustrautoscaler=<max> - Enable cluster AutoScaler with max nodes
+        vnet                   - create custom vnet
+        onprem                 - create vnet Gateway subnet
+        [nginx|appgw]          - create ingress
+        dns=<rg/zone>          - auto create dns records
+        cert=<cert_email>      - auto create TLS Certs with lets encrypt
+        afw                    - create Azure Firewall & setup
+        podsec                 - Pod Security Policy
+        kured                  - install kured
+        aci                    - install Azure Container Insights
+        acr                    - install Azure Container Registry
+        calico                 - install calico
+        private-api            - Private Cluster (require jumpbox to access)
+        policy                 - Apply gatekeeper (future)
+    [-d] : Install Demo App
     ```
 
 
@@ -57,7 +64,7 @@ Install the latest version of the az-cli, detailed here: https://docs.microsoft.
 
 Install the latest version of the helm client, detailed here: https://helm.sh/docs/using_helm/#installing-the-helm-client
 
-NOTE: If the powerapp indicates you will be using provisional features, ensure you follow these additional instructions:
+NOTE: If the app indicates you will be using provisional features, ensure you follow these additional instructions:
 
 https://docs.microsoft.com/en-us/azure/aks/availability-zones#register-feature-flags-for-your-subscription
 
@@ -66,7 +73,7 @@ This requires kubernetes version >=1.13.7, as we are using Zones and Standard lo
 
 ```az aks get-versions --location <region> --output table```
 
-NOTE: This script will enable AAD integration for AKS, you will need to ensure you have a _administartive login_ to your AAD tenant to grant the permissions needed by the AKS applications.  If you do not have administrator access to your subscriptions tenant, you can specify an anternative tenant (not related to your subscription tenant) using the -t flag.
+NOTE: This script _can_ enable AAD integration for AKS, you will need to ensure you have a _administartive login_ to your AAD tenant to grant the permissions needed by the AKS applications.  If you do not have administrator access to your subscriptions tenant, you can specify an anternative tenant (not related to your subscription tenant) using the argument to the -t flag.
 
 Once the script has setup the requried AAD Applications and Service Principles, it will deploy the ARM Template ```azuredeploy.json```
 
@@ -114,20 +121,6 @@ https://github.com/Azure/application-gateway-kubernetes-ingress/blob/master/docs
 https://github.com/Azure/application-gateway-kubernetes-ingress/blob/master/docs/setup/install-existing.md#install-ingress-controller-as-a-helm-chart
 
 
-# Testing
-
-expose a app in the example namespace
-
-
-```
-kubectl run nginx-app --image=nginx --port 80 --namespace example
-
-kubectl expose deployment nginx-app  --namespace example
-
-kubectl apply -f ingress-test.yaml   --namespace example
-```
-
-check progress: `k describe ingress --namespace example`
 
 
 

@@ -11,42 +11,49 @@ networkPolicy=""
 networkPlugin=""
 skip_app_creation=""
 AAD_INTEGRATED_TENANT=""
-ipWhitelist=""
-armPolicy=""
+privateCluster=""
+podSecurityPolicy=""
 nginxIngress=""
-dns_rg=""
-dns_zone=""
+dnsZoneRG=""
+dnsZoneName=""
 certEmail=""
+agentCount="3"
+agentCountMax=""
+agentVMSize=""
+osDiskSizeGB=""
+kured="false"
+installDemo=""
 
-while getopts "n:sa:t:" opt; do
+
+while getopts "do:v:c:l:n:sa:t:" opt; do
   case ${opt} in
     a )
       ADDONS=$OPTARG
-      if [[ $ADDONS =~ "vnet" ]]; then
+      if [[ $ADDONS == "vnet" ]]; then
         createVNET="true"
       fi
 
-      if [[ $ADDONS =~ "onprem" ]]; then
+      if [[ $ADDONS == "onprem" ]]; then
         createOnPremGW="true"
       fi
 
-      if [[ $ADDONS =~ "appgw" ]]; then
+      if [[ $ADDONS == "appgw" ]]; then
         applicationGatewaySku="WAF_v2"
       fi
 
-      if [[ $ADDONS =~ "afw" ]]; then
+      if [[ $ADDONS == "afw" ]]; then
         azureFirewallEgress="true"
       fi
 
-      if [[ $ADDONS =~ "nginx" ]]; then
+      if [[ $ADDONS == "nginx" ]]; then
         nginxIngress="true"
       fi
 
       if [[ $ADDONS =~ "dns=" ]]; then
         dns_zone_info=($(echo $ADDONS | sed  -n 's/.*dns=\([^ ]*\).*/\1/p'))
         dns_args=($(echo "$dns_zone_info" | tr "/" "\n"))
-        dns_rg=${dns_args[0]}
-        dns_zone=${dns_args[1]}
+        dnsZoneRG=${dns_args[0]}
+        dnsZoneName=${dns_args[1]}
         
       fi
 
@@ -54,22 +61,39 @@ while getopts "n:sa:t:" opt; do
         certEmail=($(echo $ADDONS | sed  -n 's/.*cert=\([[:alnum:]@\._-]*\).*/\1/p'))
       fi
 
-      if [[ $ADDONS =~ "aci" ]]; then
+      if [[ $ADDONS == "aci" ]]; then
         azureContainerInsights="true"
       fi
 
-      if [[ $ADDONS =~ "acr" ]]; then
+      if [[ $ADDONS == "kured" ]]; then
+        kured="true"
+      fi
+
+      if [[ $ADDONS == "acr" ]]; then
         acrSku="Basic"
       fi
-      if [[ $ADDONS =~ "calico" ]]; then
+      if [[ $ADDONS == "calico" ]]; then
         networkPolicy="calico"
       fi
-      if [[ $ADDONS =~ "ipw" ]]; then
-        ipWhitelist="true"
+      if [[ $ADDONS == "private-api" ]]; then
+        privateCluster="true"
       fi
-      if [[ $ADDONS =~ "policy" ]]; then
-        armPolicy="true"
+      if [[ $ADDONS == "podsec" ]]; then
+        podSecurityPolicy="true"
       fi
+      if [[ $ADDONS =~ "clustrautoscaler=" ]]; then
+        agentCountMax=($(echo $ADDONS | sed  -n 's/.*clustrautoscaler=\([0-9]*\).*/\1/p')) 
+      fi
+      
+      ;;
+    c )
+      agentCount=$OPTARG
+      ;;
+    d)
+      installDemo="true"
+      ;;
+    l )
+      location=$OPTARG
       ;;
     n )
       networkPlugin=$OPTARG
@@ -84,6 +108,12 @@ while getopts "n:sa:t:" opt; do
         AAD_INTEGRATED_TENANT=$OPTARG
         orig_tenant=$(az account  show --query tenantId -o tsv)
       fi
+      ;;
+    v )
+      agentVMSize=$OPTARG
+      ;;
+    o )
+      osDiskSizeGB=$OPTARG
       ;;
     \? )
       echo "Unknown arg"
@@ -100,14 +130,31 @@ fi
 
 shift $((OPTIND -1))
 
-if [ $# -ne 1 ] || [ -z "$networkPlugin" ] || [ "$show_usage" ]; then
-    echo "Usage: $0 [-a OPTS] [-n <kubenet|azure>] [-t [tenentid]] [-s] [<rg>/]<cluster_name>"
+if [ $# -ne 1 ] || [ -z "$location" ] || [ "$show_usage" ]; then
+    echo "Usage: $0 ARGS [<rg>/]<cluster_name>"
     echo "args:"
-    echo " <-n kubenet | azure> : Network plugin (required)"
-    echo " [-t [tenantid]]: provide an alternative tenant id to secure your aks cluster users (you will need ADMIN rights on the tenant)"
-    echo " [-a: vnet onprem [nginx|appgw] dns=<resource_grounp> cert=<cert_email> afw kured aci acr calico ipw policy]"
-    echo " -s: this will skip the recreation of the aad apps SPNs, (allowing re-running)"
-
+    echo " <-l location> : Azure Region (required)"
+    echo " [-c node count] : Mumber of virtual machine agent nodes in cluster (default 3)"
+    echo " [-n kubenet | azure] : AKS network plugin (default: azure)"
+    echo " [-v VM SKU ] : virtual machine size (default: Standard_D2s_v3)"
+    echo " [-o OS-disksize ] : virtial machine OS disk size (defaults to VM default)"
+    echo " [-t [tenantId]]: Use AAD Integration. If [tenantId] provided, an that alternative tenant id (YOU WILL NEED GLOBAL ADMIN role)"
+    echo " [-a: features] : Can provide one or multiple features:"
+    echo "     clustrautoscaler=<max> - Enable cluster AutoScaler with max nodes"
+    echo "     vnet                   - create custom vnet"
+    echo "     onprem                 - create vnet Gateway subnet"
+    echo "     [nginx|appgw]          - create ingress"
+    echo "     dns=<rg/zone>          - auto create dns records" 
+    echo "     cert=<cert_email>      - auto create TLS Certs with lets encrypt"
+    echo "     afw                    - create Azure Firewall & setup"
+    echo "     podsec                 - Pod Security Policy"
+    echo "     kured                  - install kured"
+    echo "     aci                    - install Azure Container Insights"
+    echo "     acr                    - install Azure Container Registry"
+    echo "     calico                 - install calico"
+    echo "     private-api            - Private Cluster (require jumpbox to access)"
+    echo "     policy                 - Apply gatekeeper (future)"
+    echo " [-d] : Install Demo App"
     exit 1
 fi
 
@@ -132,7 +179,29 @@ if [[ ! "$CLUSTER_NAME" =~ ^([[:alnum:]]|-)*$ ]] || [[ "$CLUSTER_NAME" =~ ^-|-$ 
     exit 1
 fi
 
-echo "Creating Cluster [${CLUSTER_NAME}] in resource group [${GROUP}], with option [applicationGatewaySku=${applicationGatewaySku} azureFirewallEgress=${azureFirewallEgress} azureContainerInsights=${azureContainerInsights} acrSku=${acrSku}]..."
+echo "Creating Cluster [${CLUSTER_NAME}] in resource group [${GROUP}], with Script Options
+  certEmail=\"${certEmail}\" 
+  kured=\"${kured}\" 
+  nginxIngress=\"${nginxIngress}\"
+  installDemo=\"${installDemo}\"
+with ARM Options:
+  createVNET=\"${createVNET}\" 
+  applicationGatewaySku=\"${applicationGatewaySku}\" 
+  azureFirewallEgress=\"${azureFirewallEgress}\" 
+  createOnPremGW=\"${createOnPremGW}\" 
+  azureContainerInsights=\"${azureContainerInsights}\" 
+  acrSku=\"${acrSku}\" 
+  podSecurityPolicy=\"${podSecurityPolicy}\"
+  networkPolicy=\"${networkPolicy}\" 
+  networkPlugin=\"${networkPlugin}\" 
+  dnsZoneRG=\"${dnsZoneRG}\" 
+  dnsZoneName=\"${dnsZoneName}\" 
+  agentCount=\"${agentCount}\" 
+  agentCountMax=\"${agentCountMax}\" 
+  agentVMSize=\"${agentVMSize}\" 
+  osDiskSizeGB=\"${osDiskSizeGB}\" 
+  privateCluster=\"${privateCluster}\"
+]"
 
 if [[ "$AAD_INTEGRATED_TENANT" ]]; then
 
@@ -280,29 +349,35 @@ AKS_SP_OBJECTID=$(az ad sp show --id $AKS_SP_APPID --query objectId -o tsv)
 echo "[DEBUG] Creating Cluster script: az group deployment create -g $GROUP \
 --template-file ./azuredeploy.json \
 --parameters \
-resourceName=\"${CLUSTER_NAME}\" \
-dnsPrefix=\"${CLUSTER_NAME}-dns\" \
-createVNET=\"${createVNET}\" \
-aksServicePrincipalObjectId=\"${AKS_SP_OBJECTID}\" \
-aksServicePrincipalClientId=\"${AKS_SP_APPID}\" \
-aksServicePrincipalClientSecret=\"${AKS_SP_SECRET}\" \
-AAD_TenantID=\"${AAD_INTEGRATED_TENANT}\" \
-AAD_ServerAppID=\"${serverAppId}\" \
-AAD_ServerAppSecret=\"${serverAppSecret}\" \
-AAD_ClientAppID=\"${clientAppId}\" \
-applicationGatewaySku=\"${applicationGatewaySku}\" \
-azureFirewallEgress=\"${azureFirewallEgress}\" \
-createOnPremGW=\"${createOnPremGW}\" \
-azureContainerInsights=\"${azureContainerInsights}\" \
-acrSku=\"${acrSku}\" \
-networkPolicy=\"${networkPolicy}\" \
-networkPlugin=\"${networkPlugin}\" \
-dnsZoneRG=\"${dns_rg}\" \
-dnsZoneName=\"${dns_zone}\" \
+resourceName="${CLUSTER_NAME}" \
+dnsPrefix="${CLUSTER_NAME}-dns" \
+${createVNET:+ createVNET="${createVNET}"} \
+aksServicePrincipalObjectId="${AKS_SP_OBJECTID}" \
+aksServicePrincipalClientId="${AKS_SP_APPID}" \
+aksServicePrincipalClientSecret="${AKS_SP_SECRET}" \
+${AAD_INTEGRATED_TENANT:+ AAD_TenantID="${AAD_INTEGRATED_TENANT}"} \
+${serverAppId:+ AAD_ServerAppID="${serverAppId}"} \
+${serverAppSecret:+ AAD_ServerAppSecret="${serverAppSecret}"} \
+${clientAppId:+ AAD_ClientAppID="${clientAppId}"} \
+${applicationGatewaySku:+ applicationGatewaySku="${applicationGatewaySku}"} \
+${azureFirewallEgress:+ azureFirewallEgress="${azureFirewallEgress}"} \
+${createOnPremGW:+ createOnPremGW="${createOnPremGW}"} \
+${azureContainerInsights:+ azureContainerInsights="${azureContainerInsights}"} \
+${acrSku:+ acrSku="${acrSku}"} \
+${podSecurityPolicy:+ podSecurityPolicy="${podSecurityPolicy}"} \
+${networkPolicy:+ networkPolicy="${networkPolicy}"} \
+${networkPlugin:+ networkPlugin="${networkPlugin}"} \
+${dnsZoneRG:+ dnsZoneRG="${dnsZoneRG}"} \
+${dnsZoneName:+ dnsZoneName="${dnsZoneName}"} \
+agentCount="${agentCount}" \
+${agentCountMax:+ agentCountMax="${agentCountMax}"} \
+${agentVMSize:+ agentVMSize="${agentVMSize}"} \
+${osDiskSizeGB:+ osDiskSizeGB="${osDiskSizeGB}"} \
+${privateCluster:+ privateCluster="${privateCluster}" } \
 "
 
 
-az group create -l westeurope -n $GROUP >/dev/null
+az group create -l $location -n $GROUP >/dev/null
 
 function setup_cluster {
     local cluster_api_url=$1
@@ -332,8 +407,13 @@ function setup_cluster {
     kubectl apply -f ./helm-rbac.yaml
     helm init --service-account tiller --node-selectors "beta.kubernetes.io/os"="linux"
 
-    echo "Waiting 10s for ready tiller pod...."
-    sleep 10s
+    if [[ "$kured" == "true" ]]; then
+      echo "Installing kured DaemonSet...."
+      kubectl apply -f https://github.com/weaveworks/kured/releases/download/1.2.0/kured-1.2.0-dockerhub.yaml
+    fi
+
+    echo "Waiting 30s for ready tiller pod...."
+    sleep 30s
 
     # Depends on applicationGatewayName dns etc
     echo "Install the AAD POD Identity into the cluster ( Managed Identity Controller (MIC) deployment, the Node Managed Identity (NMI) daemon)..."
@@ -374,13 +454,13 @@ function setup_cluster {
         helm install --name template-nginx-ingress --set controller.publishService.enabled=true  stable/nginx-ingress
     fi
 
-    if [[ "$dns_rg" ]]; then
-      echo "Deploying Azure DNS Zone controller, (Zone in rg: ${dns_rg})"
-      # wget -qO - https://raw.githubusercontent.com/khowling/go-private-dns/master/deploy.yaml | sed -e 's/<<rg>>/'"$dns_rg"'/' -e  's/<<subid>>/'"$(az account show --query id -o tsv)"'/' | kubectl apply -f - 
+    if [[ "$dnsZoneRG" ]]; then
+      echo "Deploying Azure DNS Zone controller, (Zone in rg: ${dnsZoneRG})"
+      # wget -qO - https://raw.githubusercontent.com/khowling/go-private-dns/master/deploy.yaml | sed -e 's/<<rg>>/'"$dnsZoneRG"'/' -e  's/<<subid>>/'"$(az account show --query id -o tsv)"'/' | kubectl apply -f - 
 
       helm install  https://github.com/khowling/go-private-dns/blob/master/helm/azure-dns-controller-0.1.0.tgz?raw=true \
         --name template-dns-controller \
-        --set controllerConfig.resourceGroup=$dns_rg \
+        --set controllerConfig.resourceGroup=$dnsZoneRG \
         --set controllerConfig.subscriptionId=$(az account show --query id -o tsv) \
         --set managedIdentity.identityClientId=$msi_clientid \
         --set managedIdentity.identityResourceId=$msi_resourceid
@@ -418,11 +498,11 @@ spec:
           class: $ingress_class
 EOF
 
-      if [[ "$ingress_class" ]]; then
-        echo "Creating Certificate, waiting 2m to allow cert-manager to verify the domain (will create/delete a ingress)"
+      if [[ "$ingress_class" ]] && [[ "$installDemo" ]]; then
+        echo "Creating Certificate, waiting 3m to allow cert-manager to verify the domain (will create/delete a ingress)"
         sleep 3m
 
-        demoapp_url="ecomm.${CLUSTER_NAME}.${dns_zone}"
+        demoapp_url="ecomm.${CLUSTER_NAME}.${dnsZoneName}"
         echo "Installing Demo eCommerce app ${demoapp_url}"
 
         helm install https://github.com/khowling/aks-ecomm-demo/blob/master/helm/aks-ecomm-demo-0.1.0.tgz?raw=true \
@@ -436,8 +516,10 @@ EOF
     fi
 }
 
+
 echo "Sleeping for 4minutes before applying template to allow AAD propergation, please wait...."
 sleep 4m
+
 yn="y"
 
 while true; do
@@ -450,24 +532,30 @@ while true; do
                 --parameters \
                     resourceName="${CLUSTER_NAME}" \
                     dnsPrefix="${CLUSTER_NAME}-dns" \
-                    createVNET="${createVNET}" \
+                    ${createVNET:+ createVNET="${createVNET}"} \
                     aksServicePrincipalObjectId="${AKS_SP_OBJECTID}" \
                     aksServicePrincipalClientId="${AKS_SP_APPID}" \
                     aksServicePrincipalClientSecret="${AKS_SP_SECRET}" \
-                    AAD_TenantID="${AAD_INTEGRATED_TENANT}" \
-                    AAD_ServerAppID="${serverAppId}" \
-                    AAD_ServerAppSecret="${serverAppSecret}" \
-                    AAD_ClientAppID="${clientAppId}" \
-                    applicationGatewaySku="${applicationGatewaySku}" \
-                    azureFirewallEgress="${azureFirewallEgress}" \
-                    createOnPremGW="${createOnPremGW}" \
-                    azureContainerInsights="${azureContainerInsights}" \
-                    acrSku="${acrSku}" \
-                    networkPolicy="${networkPolicy}" \
-                    networkPlugin="${networkPlugin}" \
-                    dnsZoneRG="${dns_rg}" \
-                    dnsZoneName="${dns_zone}" \
-                     --query "[properties.outputs.controlPlaneFQDN.value,properties.outputs.applicationGatewayName.value,properties.outputs.msiIdentityResourceId.value,properties.outputs.msiIdentityClientId.value]" --output tsv)
+                    ${AAD_INTEGRATED_TENANT:+ AAD_TenantID="${AAD_INTEGRATED_TENANT}"} \
+                    ${serverAppId:+ AAD_ServerAppID="${serverAppId}"} \
+                    ${serverAppSecret:+ AAD_ServerAppSecret="${serverAppSecret}"} \
+                    ${clientAppId:+ AAD_ClientAppID="${clientAppId}"} \
+                    ${applicationGatewaySku:+ applicationGatewaySku="${applicationGatewaySku}"} \
+                    ${azureFirewallEgress:+ azureFirewallEgress="${azureFirewallEgress}"} \
+                    ${createOnPremGW:+ createOnPremGW="${createOnPremGW}"} \
+                    ${azureContainerInsights:+ azureContainerInsights="${azureContainerInsights}"} \
+                    ${acrSku:+ acrSku="${acrSku}"} \
+                    ${podSecurityPolicy:+ podSecurityPolicy="${podSecurityPolicy}"} \
+                    ${networkPolicy:+ networkPolicy="${networkPolicy}"} \
+                    ${networkPlugin:+ networkPlugin="${networkPlugin}"} \
+                    ${dnsZoneRG:+ dnsZoneRG="${dnsZoneRG}"} \
+                    ${dnsZoneName:+ dnsZoneName="${dnsZoneName}"} \
+                    agentCount="${agentCount}" \
+                    ${agentCountMax:+ agentCountMax="${agentCountMax}"} \
+                    ${agentVMSize:+ agentVMSize="${agentVMSize}"} \
+                    ${osDiskSizeGB:+ osDiskSizeGB="${osDiskSizeGB}"} \
+                    ${privateCluster:+ privateCluster="${privateCluster}" } \
+                    --query "[properties.outputs.controlPlaneFQDN.value,properties.outputs.applicationGatewayName.value,properties.outputs.msiIdentityResourceId.value,properties.outputs.msiIdentityClientId.value]" --output tsv)
 
             if [ $? -eq 0 ] ; then
                 out_array=($(echo $ARM_OUTPUT | tr " " "\n"))

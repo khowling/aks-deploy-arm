@@ -32,12 +32,19 @@
             }
         },
         "agentCount": {
-            "defaultValue": 2,
+            "defaultValue": 3,
             "minValue": 1,
             "maxValue": 50,
             "type": "int",
             "metadata": {
                 "description": "The number of agent nodes for the cluster. Production workloads have a recommended minimum of 3."
+            }
+        },
+        "agentCountMax": {
+            "defaultValue": 0,
+            "type": "int",
+            "metadata": {
+                "description": "The Max number of agent nodes for the cluster, with autoscaller"
             }
         },
         "agentVMSize": {
@@ -66,7 +73,7 @@
             }
         },
         "kubernetesVersion": {
-            "defaultValue": "1.13.10",
+            "defaultValue": "1.14.8",
             "type": "string",
             "metadata": {
                 "description": "The version of Kubernetes."
@@ -77,7 +84,7 @@
                 "azure",
                 "kubenet"
             ],
-            "defaultValue": "kubenet",
+            "defaultValue": "azure",
             "type": "string",
             "metadata": {
                 "description": "Network plugin used for building Kubernetes network."
@@ -106,16 +113,32 @@
             "defaultValue": true,
             "type": "bool",
             "metadata": {
-                "description": "boolean flag to turn on and off of RBAC"
+                "description": "Whether to enable Kubernetes Role-Based Access Control."
+            }
+        },
+        "podSecurityPolicy": {
+            "defaultValue": false,
+            "type": "bool",
+            "metadata": {
+                "description": "(PREVIEW) Whether to enable Kubernetes Pod security policy."
+            }
+        },
+        "privateCluster": {
+            "defaultValue": false,
+            "type": "bool",
+            "metadata": {
+                "description": "Whether to create the cluster as a private cluster or not."
             }
         },
         "dnsZoneRG": {
+            "defaultValue": "",
             "type": "string",
             "metadata": {
               "description": "Azure DNS Zone RG (add permissions)"
             }
         },
         "dnsZoneName": {
+            "defaultValue": "",
             "type": "string",
             "metadata": {
               "description": "Azure DNS Zone name (add permissions)"
@@ -178,7 +201,14 @@
             "type": "string",
             "defaultValue": "10.0.0.0/16",
             "metadata": {
-                "description": "A CIDR notation IP range from which to assign service cluster IPs."
+                "description": "A CIDR notation IP range from which to assign service cluster IPs. It must not overlap with any Subnet IP ranges."
+            }
+        },
+        "podCidr": {
+            "type": "string",
+            "defaultValue": "10.244.0.0/16",
+            "metadata": {
+                "description": "A CIDR notation IP range from which to assign pod IPs when kubenet is used."
             }
         },
         "dnsServiceIP": {
@@ -196,24 +226,28 @@
             }
         },
         "AAD_ClientAppID":{
+            "defaultValue": "",
             "type":"string",
             "metadata": {
                 "description": "The Application ID for the Client App Service Principal"
             }
         },
         "AAD_ServerAppID":{
+            "defaultValue": "",
             "type":"string",
             "metadata": {
                 "description": "The Application ID for the Server App Service Principal"
             }
         },
         "AAD_TenantID":{
+            "defaultValue": "",
             "type":"string",
             "metadata": {
                 "description": "The Azure AD Tenant where the cluster will reside"
             }
         },
         "AAD_ServerAppSecret":{
+            "defaultValue": "",
             "type":"securestring",
             "metadata": {
                 "description": "The Service Principal Secret for the Client App Service Principal"
@@ -315,6 +349,26 @@
             "enabled": "true",
             "firewallMode": "Detection"
         },
+        "autoScale": "[not(lessOrEquals(parameters('agentCountMax'),  parameters('agentCount')))]",
+        "autoScaleProfile": {
+            "minCount": "[parameters('agentCount')]",
+            "maxCount": "[parameters('agentCountMax')]"
+        },
+        "nodepool1Profile":  {
+            "name": "nodepool1",
+            "osDiskSizeGB": "[parameters('osDiskSizeGB')]",
+            "count": "[parameters('agentCount')]",
+            "vmSize": "[parameters('agentVMSize')]",
+            "osType": "Linux",
+            "vnetSubnetID": "[if(parameters('createVNET'), resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('vnetAksSubnetName')), json('null'))]",
+            "maxPods": "[parameters('maxPods')]",
+            "type": "VirtualMachineScaleSets",
+            "availabilityZones": [
+                "1", "2", "3"
+                ],
+            "enableAutoScaling": "[variables('autoScale')]"
+        },
+
         "readerRole": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', 'acdd72a7-3385-48ef-bd42-f606fba81ae7')]",
         "networkContributorRole": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', '4d97b98b-1d4f-4787-a291-c67834d212e7')]",
         "appGwContributorRole": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
@@ -661,7 +715,7 @@
         {
             "type": "Microsoft.ContainerService/managedClusters",
             "name": "[parameters('resourceName')]",
-            "apiVersion": "2019-06-01",
+            "apiVersion": "2019-08-01",
             "location": "[parameters('location')]",
             "properties": {
                 "kubernetesVersion": "[parameters('kubernetesVersion')]",
@@ -676,32 +730,20 @@
                         }
                     }
                 },
-                "agentPoolProfiles": [
-                    {
-                        "name": "nodepool1",
-                        "osDiskSizeGB": "[parameters('osDiskSizeGB')]",
-                        "count": "[parameters('agentCount')]",
-                        "minCount": "[parameters('agentCount')]",
-                        "maxCount": 5,
-                        "vmSize": "[parameters('agentVMSize')]",
-                        "osType": "Linux",
-                        "vnetSubnetID": "[if(parameters('createVNET'), resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('vnetAksSubnetName')), json('null'))]",
-                        "maxPods": "[parameters('maxPods')]",
-                        "type": "VirtualMachineScaleSets",
-                        "enableAutoScaling": true,
-                        "availabilityZones": [
-                            "1", "2", "3"
-                          ]
-                    }
-                ],
+                "apiServerAccessProfile": {
+                    "enablePrivateCluster": "[parameters('privateCluster')]"
+                },
+                "agentPoolProfiles": "[if (variables('autoScale'), array (union(variables('nodepool1Profile'), variables('autoScaleProfile'))), array(variables('nodepool1Profile')))]",
                 "servicePrincipalProfile": {
                     "clientId": "[parameters('aksServicePrincipalClientId')]",
                     "secret": "[parameters('aksServicePrincipalClientSecret')]"
                 },
+                "enablePodSecurityPolicy": "[parameters('podSecurityPolicy')]",
                 "networkProfile": {
                     "loadBalancerSku": "standard",
                     "networkPlugin": "[parameters('networkPlugin')]",
                     "networkPolicy": "[parameters('networkPolicy')]",
+                    "podCidr": "[parameters('podCidr')]",
                     "serviceCidr": "[parameters('serviceCidr')]",
                     "dnsServiceIP": "[parameters('dnsServiceIP')]",
                     "dockerBridgeCidr": "[parameters('dockerBridgeCidr')]"
