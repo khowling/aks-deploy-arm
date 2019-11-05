@@ -4,6 +4,7 @@
 createVNET=""
 applicationGatewaySku=""
 azureFirewallEgress=""
+azureFirewallTCPAllow=""
 azureContainerInsights=""
 createOnPremGW=""
 acrSku=""
@@ -41,7 +42,8 @@ while getopts "do:v:c:l:n:sa:t:" opt; do
         applicationGatewaySku="WAF_v2"
       fi
 
-      if [[ $ADDONS == "afw" ]]; then
+      if [[ $ADDONS =~ "afw=" ]]; then
+        azureFirewallTCPAllow=($(echo $ADDONS | sed  -n 's/.*afw=\([^ ]*\).*/\1/p'))
         azureFirewallEgress="true"
       fi
 
@@ -141,17 +143,17 @@ if [ $# -ne 1 ] || [ -z "$location" ] || [ "$show_usage" ]; then
     echo " [-t [tenantId]]: Use AAD Integration. If [tenantId] provided, an that alternative tenant id (YOU WILL NEED GLOBAL ADMIN role)"
     echo " [-a: features] : Can provide one or multiple features:"
     echo "     clustrautoscaler=<max> - Enable cluster AutoScaler with max nodes"
-    echo "     vnet                   - create custom vnet"
-    echo "     onprem                 - create vnet Gateway subnet"
-    echo "     [nginx|appgw]          - create ingress"
-    echo "     dns=<rg/zone>          - auto create dns records" 
-    echo "     cert=<cert_email>      - auto create TLS Certs with lets encrypt"
-    echo "     afw                    - create Azure Firewall & setup"
+    echo "     vnet                   - Create custom vnet"
+    echo "     onprem                 - Create vnet Gateway subnet"
+    echo "     [nginx|appgw]          - Create ingress"
+    echo "     dns=<rg/zone>          - Auto create dns records" 
+    echo "     cert=<cert_email>      - Auto create TLS Certs with lets encrypt"
+    echo "     afw=<ServiceTag>       - Create Azure Firewall, include service tag for the region (ie AzureCloud.WestEurope)"
     echo "     podsec                 - Pod Security Policy"
-    echo "     kured                  - install kured"
-    echo "     aci                    - install Azure Container Insights"
-    echo "     acr                    - install Azure Container Registry"
-    echo "     calico                 - install calico"
+    echo "     kured                  - Install kured"
+    echo "     aci                    - Install Azure Container Insights"
+    echo "     acr                    - Install Azure Container Registry"
+    echo "     calico                 - Install calico"
     echo "     private-api            - Private Cluster (require jumpbox to access)"
     echo "     policy                 - Apply gatekeeper (future)"
     echo " [-d] : Install Demo App"
@@ -188,6 +190,7 @@ with ARM Options:
   createVNET=\"${createVNET}\" 
   applicationGatewaySku=\"${applicationGatewaySku}\" 
   azureFirewallEgress=\"${azureFirewallEgress}\" 
+  azureFirewallTCPAllow=\"${azureFirewallTCPAllow}\"
   createOnPremGW=\"${createOnPremGW}\" 
   azureContainerInsights=\"${azureContainerInsights}\" 
   acrSku=\"${acrSku}\" 
@@ -361,6 +364,7 @@ ${serverAppSecret:+ AAD_ServerAppSecret="${serverAppSecret}"} \
 ${clientAppId:+ AAD_ClientAppID="${clientAppId}"} \
 ${applicationGatewaySku:+ applicationGatewaySku="${applicationGatewaySku}"} \
 ${azureFirewallEgress:+ azureFirewallEgress="${azureFirewallEgress}"} \
+${azureFirewallTCPAllow:+ azureFirewallTCPAllow="${azureFirewallTCPAllow}"} \
 ${createOnPremGW:+ createOnPremGW="${createOnPremGW}"} \
 ${azureContainerInsights:+ azureContainerInsights="${azureContainerInsights}"} \
 ${acrSku:+ acrSku="${acrSku}"} \
@@ -542,6 +546,7 @@ while true; do
                     ${clientAppId:+ AAD_ClientAppID="${clientAppId}"} \
                     ${applicationGatewaySku:+ applicationGatewaySku="${applicationGatewaySku}"} \
                     ${azureFirewallEgress:+ azureFirewallEgress="${azureFirewallEgress}"} \
+                    ${azureFirewallTCPAllow:+ azureFirewallTCPAllow="${azureFirewallTCPAllow}"} \
                     ${createOnPremGW:+ createOnPremGW="${createOnPremGW}"} \
                     ${azureContainerInsights:+ azureContainerInsights="${azureContainerInsights}"} \
                     ${acrSku:+ acrSku="${acrSku}"} \

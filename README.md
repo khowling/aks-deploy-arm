@@ -13,7 +13,7 @@ In addition, the script has been designed to be incorporated it into your CI/CD 
 ## Running the Script
 
 There are 2 ways to run the script
-* It's **highly** recommended to run the script using this **[app](https://khcommon.z6.web.core.windows.net?v=v1.7)**, this will guide you through a series of questions where you can specify your cluster, application and networking needs. This results in the command line you can then paste into your linux terminal (or cloud shell) to launch the script.
+* It's **highly** recommended to run the script using this **[app](https://khcommon.z6.web.core.windows.net?v=v1.8)**, this will guide you through a series of questions where you can specify your cluster, application and networking needs. This results in the command line you can then paste into your linux terminal (or cloud shell) to launch the script.
 * Alternatively, you can manually run the script, constructing your own command line options, this is a great option once you have been through the app once, and you want to add to your automated release process
 
 
@@ -34,7 +34,7 @@ There are 2 ways to run the script
         [nginx|appgw]          - create ingress
         dns=<rg/zone>          - auto create dns records
         cert=<cert_email>      - auto create TLS Certs with lets encrypt
-        afw                    - create Azure Firewall & setup
+        afw=<ServiceTag>       - Create Azure Firewall, include service tag for the region (ie AzureCloud.WestEurope)
         podsec                 - Pod Security Policy
         kured                  - install kured
         aci                    - install Azure Container Insights

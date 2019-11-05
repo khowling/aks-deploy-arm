@@ -183,16 +183,16 @@
               "description": "Address prefix"
             }
         },
-        "vnetOnPremSubnetAddressPrefix": {
+        "vnetFirewallPrivateIPAlways4": {
             "type": "string",
-            "defaultValue": "10.240.130.64/26",
+            "defaultValue": "10.240.130.4",
             "metadata": {
               "description": "Address prefix"
             }
         },
-        "vnetFirewallPrivateIPAlways4": {
+        "vnetOnPremSubnetAddressPrefix": {
             "type": "string",
-            "defaultValue": "10.240.130.4",
+            "defaultValue": "10.240.130.64/26",
             "metadata": {
               "description": "Address prefix"
             }
@@ -284,6 +284,27 @@
         "azureFirewallEgress": {
             "type": "bool",
             "defaultValue": false
+        },
+        "azureFirewallTCPAllow": {
+            "type": "string",
+            "metadata": {
+                "description": "Service tags for Allowed firewall TCP outbound connections from AKS subnet"
+            },
+            "defaultValue": "*",
+            "allowedValues": [
+                "*",                
+                "AzureCloud.CentralUS",
+                "AzureCloud.EastUS",
+                "AzureCloud.EastUS2",
+                "AzureCloud.UKNorth",
+                "AzureCloud.UKSouth",
+                "AzureCloud.UKSouth2",
+                "AzureCloud.UKWest",
+                "AzureCloud.WestEurope",
+                "AzureCloud.WestUS",
+                "AzureCloud.WestUS2",
+                "AzureCloud.WestCentralUS"
+            ]
         },
         "azureContainerInsights": {
             "type": "bool",
@@ -520,12 +541,6 @@
                         "name": "clusterEgressRule1",
                         "protocols": [
                           {
-                            "port": 22
-                          },
-                          {
-                            "port": 9000
-                          },
-                          {
                             "port": 443,
                             "protocolType": "Https"
                           }
@@ -574,9 +589,9 @@
                 {
                   "name": "netRc1",
                   "properties": {
-                    "priority": 200,
+                    "priority": 100,
                     "action": {
-                      "type": "Deny"
+                      "type": "Allow"
                     },
                     "rules": [
                       {
@@ -585,13 +600,14 @@
                           "TCP"
                         ],
                         "sourceAddresses": [
-                          "10.0.2.0/24"
+                          "[parameters('vnetAksSubnetAddressPrefix')]"
                         ],
                         "destinationAddresses": [
-                          "*"
+                            "[parameters('azureFirewallTCPAllow')]"
                         ],
                         "destinationPorts": [
-                          "8000-8999"
+                          "9000",
+                          "22"
                         ]
                       }
                     ]
