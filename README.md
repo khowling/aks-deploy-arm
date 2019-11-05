@@ -3,30 +3,19 @@
 
 A comprehensive, simplified AKS-based provisioning script that deploys a feature-complete, opinionated, best-practice AKS operating environment.
 
-The script results in a taylored, operational AKS environment configured to meet your organsiational & applcations requirements, but incorporating the latest best-practise recommended configration and features.  
+The script results in a tailored, operational AKS environment configured to meet your organization & application requirements, in addition, ensuring the latest recommended AKS configurations and features are followed.  
 
-This accelerated provisioning script can save your project team many hours from sifting though the many advanced configration options and addons,  and manually hand-crafting environments. 
+This accelerated provisioning script can save your project team many hours from sifting through the many advanced configuration options and addons, and manually hand-crafting environments. 
 
-In addtion, the script has been designed so you can incorporated it into your CI/CD tools to fully automate future enviroenment creation
+In addition, the script has been designed to be incorporated it into your CI/CD tools to fully automate  environment creation
 
-##  Conditional, taylored approach
-
-The script configures all the recommended AKS options&addons, and includes all the additional resources to provide a fully-functional  environment ready to deploy production-ready applications.
-
-One size does not fill all! To allow this script to be relevent for requirements between "I just want a managed PaaS to deploy a webapp" to "I need a hardened, locked down, secure environemtn to run my financial applications", the script conditionally provisions features/resources based on your operations requirements, and in many cases, offering preferences for Azure-native or OSS components covering:
-* Cluster security and access
-* Monitoring
-* Application requirements (ingress)
-* H/W requirements (IO optimised, CPU optimised etc)
-* Hosting containers
-* Required application features
-* Networking commectivity requirements
 
 ## Running the Script
 
-There a 2 ways to lauch the script
-* The **highly** recommended way is to use this **[app](https://khcommon.z6.web.core.windows.net?v=v1.7)** to guide you through a series of questions where you can specify your operational needs, this outputs the command line you can then paste to launch the script
-* Alternativly, you can manaully run the script, constructing your own command line options, this is a great option once you have been through the app once, and you want to add to your automated release process
+There are 2 ways to run the script
+* It's **highly** recommended to run the script using this **[app](https://khcommon.z6.web.core.windows.net?v=v1.7)**, this will guide you through a series of questions where you can specify your cluster, application and networking needs. This results in the command line you can then paste into your linux terminal (or cloud shell) to launch the script.
+* Alternatively, you can manually run the script, constructing your own command line options, this is a great option once you have been through the app once, and you want to add to your automated release process
+
 
 
     ```
@@ -56,6 +45,18 @@ There a 2 ways to lauch the script
     [-d] : Install Demo App
     ```
 
+##  Conditional, tailored approach
+
+The script configures all the recommended AKS options & addons, including all the additional resources to provide a fully-functional  environment ready to deploy production-ready applications.
+
+One size does not fill all! To allow this script to be relevant for requirements between "I want a simple, secure, managed PaaS to deploy a webapp", to, "I need a hardened, locked down, secure environment to run my financial applications". The script conditionally provisions features/resources based on your operations requirements, and in many cases, offering preferences for Azure-native or OSS components covering:
+* Cluster network security and user access
+* Cluster and Application Monitoring
+* H/W requirements (IO optimised, CPU optimised etc)
+* Containers hosting options
+* Application access requirements
+* Application network connectivity requirements
+
 
 
 ## Requirements for running the script
@@ -69,11 +70,11 @@ NOTE: If the app indicates you will be using provisional features, ensure you fo
 https://docs.microsoft.com/en-us/azure/aks/availability-zones#register-feature-flags-for-your-subscription
 
 
-This requires kubernetes version >=1.13.7, as we are using Zones and Standard load balancer, please ensure this version is avaiable in your region
+At the time of writing, the default kubernetes version in the ARM template is `1.14.8`. As newer versions are supported, please ensure you update the minor version numbers as appropriate. NOTE: To see versions available in your region, run the following command:
 
 ```az aks get-versions --location <region> --output table```
 
-NOTE: This script _can_ enable AAD integration for AKS, you will need to ensure you have a _administartive login_ to your AAD tenant to grant the permissions needed by the AKS applications.  If you do not have administrator access to your subscriptions tenant, you can specify an anternative tenant (not related to your subscription tenant) using the argument to the -t flag.
+NOTE: This script _can_ enable AAD integration for AKS, you will need to ensure you have a _Global Admin Login_ to your AAD tenant to grant the permissions needed by the AKS applications.  If you do not have administrator access to your subscriptions tenant, you can specify an alternative tenant (not related to your subscription tenant) using the `tenantId` argument to the `-t` flag.
 
 Once the script has setup the requried AAD Applications and Service Principles, it will deploy the ARM Template ```azuredeploy.json```
 
@@ -81,47 +82,58 @@ Once the script has setup the requried AAD Applications and Service Principles, 
 
 ## ARM Template information
 
-The Template will create
+The Template will create the following resources in your Azure subscription:
 
-(optional)
-* `appgw-<cluster_name>` - This will be your `Application Gateway WAF` Ingress Service_ for your applications
-* `appgwManagedIdentity<cluster_name>` - creates a `user-assigned Managed Identity` resource.  This Identity is used by the `application-gateway-ingress-controller` to configure routing rules. This identity is assigned the `Contributer` role on the Application Gateway & the `Reader` Role on the Application gateway Resource Group, in addition The `AKS Service Principle` will be assigned the `Managed Identity Operator` role to allow AKS to read the identity. This is all accomplished by the deplyoment `ClusterRoleAssignmentDeploymentForMSI`.
+(optional - If DNS or ApplicationGateway selected)
+* `<cluster_name>-ingresIdentity` - creates a `user-assigned Managed Identity` resource.  This Identity is used to update your Azure DNS Zone and Application Gateway configurations.  There are a number of additional nested `deploments` in the template to assign the required Roles to these resources.
 
-(optional)
-* `acr<cluster_name>` - This is the `Azure Container Registry` to securly host your containers.  The `AKS Service Principle` will be assigned the `AcrPullRole` role on this resource to allow AKS to pull images (accomplished by the deplyoment `ClusterRoleAssignmentForKubenetesSPN`) 
+(optional - If Application Gateway ingress selected)
+* `<cluster_name>-appgw` - This will be your `Application Gateway WAF` Ingress Service_ for your applications
 
-(optional)
-* `vnet-<cluster_name>` - This is a `VNET` to host the agent nodes.  The `AKS Service Principle` will be assigned the `Network Contributor` role on the agent subnet to allow AKS to create networking services (accomplished by the deplyoment `ClusterRoleAssignmentForKubenetesSPN`) 
 
-(optional)
-* `vnetfw-<cluster_name>` - This is a `Azure Firewall` to protect your cluster egress traffic.  A UDR (Routing Rule) is defined on the aks node subnet to ensure all cluster egress traffic is routed through the firewall. The firewall is configured with the folowing:
+(optional - If Security Container Registry selected)
+* `<cluster_name>acr` - This is the `Azure Container Registry` to securly host your containers.  The `AKS Service Principle` will be assigned the `AcrPullRole` role on this resource to allow AKS to pull images (accomplished by the deplyoment `ClusterRoleAssignmentForKubenetesSPN`) 
+
+(optional - If `Custom Networking` is selected)
+* `<cluster_name>-vnet` - This is a `VNET` to host the agent nodes.  The `AKS Service Principle` will be assigned the `Network Contributor` role on the agent subnet to allow AKS to create networking services (accomplished by the deplyoment `ClusterRoleAssignmentForKubenetesSPN`) 
+
+(optional - If High Security Cluster is selected)
+* `<cluster_name>-fw` - This is a `Azure Firewall` to protect your cluster egress traffic.  A UDR (Routing Rule) is defined on the aks node subnet to ensure all cluster egress traffic is routed through the firewall. The firewall is configured with the folowing:
     * Application rules: Configure fully qualified domain names (FQDNs) that can be accessed from a subnet, this list is sourced from : https://docs.microsoft.com/en-us/azure/aks/limit-egress-traffic#required-ports-and-addresses-for-aks-clusters
     * Network rules: Configure rules that contain source addresses, protocols, destination ports, and destination addresses. This is blocked
     * NAT rules: Configure DNAT rules to allow incoming connections.  This is blocked
-* `
 
 (optional)
-* `workspace-<cluster_name>` - This is the `Log Analytics Workspace` to store the cluster metrics and logging data 
+* `<cluster_name>-workspace` - This is the `Log Analytics Workspace` to store the cluster metrics and logging data 
 
-* `<cluster_name>` - This is your AKS cluster resource.
+(required)
+* `<cluster_name>` - Your AKS cluster resource.
 
 
 
-# Post Script
+## Post Script
 
-The post creation script does a number of things
+The post creation script runs after successful deployment of the ARM template, then uses the native kubernetes tools to setup the following:
 
-* Creates a new namespace called `example`, creates a new namespace Role `user-full-access`, and assigns the current user to that role in the `example` namespace.
+* Creates a new namespace called `production`, creates a new namespace Role `user-full-access`, and assigns the current user to that role in the `production` namespace.
 
-Sets up POD Identity for the _Application Gateway Ingress Controller_
+Sets up POD Identity for the `Application Gateway Ingress Controller` & `DNS Zone Controller`
 https://github.com/Azure/application-gateway-kubernetes-ingress/blob/master/docs/setup/install-existing.md#set-up-aad-pod-identity
 
-* Install the Ingress Controller Helm Chart & update parameters.
+* Conditionally Install the Nginx or AppGW Ingress Controller Helm Chart & update parameters.
 
 https://github.com/Azure/application-gateway-kubernetes-ingress/blob/master/docs/setup/install-existing.md#install-ingress-controller-as-a-helm-chart
 
+* Conditionally Install the Azure DNS Zone Helm Chart & update parameters.
 
+https://github.com/khowling/go-private-dns
 
+* Conditionally Install the cert-manager Helm Chart & update parameters.
 
+https://github.com/jetstack/cert-manager
+
+* Conditionally installs demo app helm chart
+
+https://github.com/khowling/aks-ecomm-demo
 
 
