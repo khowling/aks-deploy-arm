@@ -56,7 +56,7 @@ while getopts "do:v:c:l:n:sa:t:" opt; do
         dns_args=($(echo "$dns_zone_info" | tr "/" "\n"))
         dnsZoneRG=${dns_args[0]}
         dnsZoneName=${dns_args[1]}
-        
+
       fi
 
       if [[ $ADDONS =~ "cert=" ]]; then
@@ -84,9 +84,9 @@ while getopts "do:v:c:l:n:sa:t:" opt; do
         podSecurityPolicy="true"
       fi
       if [[ $ADDONS =~ "clustrautoscaler=" ]]; then
-        agentCountMax=($(echo $ADDONS | sed  -n 's/.*clustrautoscaler=\([0-9]*\).*/\1/p')) 
+        agentCountMax=($(echo $ADDONS | sed  -n 's/.*clustrautoscaler=\([0-9]*\).*/\1/p'))
       fi
-      
+
       ;;
     c )
       agentCount=$OPTARG
@@ -103,12 +103,13 @@ while getopts "do:v:c:l:n:sa:t:" opt; do
     s )
       skip_app_creation="true"
       ;;
-    t ) 
+    t )
       if [[ "$OPTARG" = "current" ]]; then
         AAD_INTEGRATED_TENANT=$(az account show --query tenantId --output tsv)
       else
         AAD_INTEGRATED_TENANT=$OPTARG
         orig_tenant=$(az account  show --query tenantId -o tsv)
+        orig_sub=$(az account  show --query id -o tsv)
       fi
       ;;
     v )
@@ -120,12 +121,12 @@ while getopts "do:v:c:l:n:sa:t:" opt; do
     \? )
       echo "Unknown arg"
       show_usage=true
-      
-      ;; 
+
+      ;;
     esac
 done
 
-## If 
+## If
 if [[ "$applicationGatewaySku" ||  "$azureFirewallEgress" || "$createOnPremGW" ]]; then
   createVNET="true"
 fi
@@ -146,7 +147,7 @@ if [ $# -ne 1 ] || [ -z "$location" ] || [ "$show_usage" ]; then
     echo "     vnet                   - Create custom vnet"
     echo "     onprem                 - Create vnet Gateway subnet"
     echo "     [nginx|appgw]          - Create ingress"
-    echo "     dns=<rg/zone>          - Auto create dns records" 
+    echo "     dns=<rg/zone>          - Auto create dns records"
     echo "     cert=<cert_email>      - Auto create TLS Certs with lets encrypt"
     echo "     afw=<ServiceTag>       - Create Azure Firewall, include service tag for the region (ie AzureCloud.WestEurope)"
     echo "     podsec                 - Pod Security Policy"
@@ -182,27 +183,27 @@ if [[ ! "$CLUSTER_NAME" =~ ^([[:alnum:]]|-)*$ ]] || [[ "$CLUSTER_NAME" =~ ^-|-$ 
 fi
 
 echo "Creating Cluster [${CLUSTER_NAME}] in resource group [${GROUP}], with Script Options
-  certEmail=\"${certEmail}\" 
-  kured=\"${kured}\" 
+  certEmail=\"${certEmail}\"
+  kured=\"${kured}\"
   nginxIngress=\"${nginxIngress}\"
   installDemo=\"${installDemo}\"
 with ARM Options:
-  createVNET=\"${createVNET}\" 
-  applicationGatewaySku=\"${applicationGatewaySku}\" 
-  azureFirewallEgress=\"${azureFirewallEgress}\" 
+  createVNET=\"${createVNET}\"
+  applicationGatewaySku=\"${applicationGatewaySku}\"
+  azureFirewallEgress=\"${azureFirewallEgress}\"
   azureFirewallTCPAllow=\"${azureFirewallTCPAllow}\"
-  createOnPremGW=\"${createOnPremGW}\" 
-  azureContainerInsights=\"${azureContainerInsights}\" 
-  acrSku=\"${acrSku}\" 
+  createOnPremGW=\"${createOnPremGW}\"
+  azureContainerInsights=\"${azureContainerInsights}\"
+  acrSku=\"${acrSku}\"
   podSecurityPolicy=\"${podSecurityPolicy}\"
-  networkPolicy=\"${networkPolicy}\" 
-  networkPlugin=\"${networkPlugin}\" 
-  dnsZoneRG=\"${dnsZoneRG}\" 
-  dnsZoneName=\"${dnsZoneName}\" 
-  agentCount=\"${agentCount}\" 
-  agentCountMax=\"${agentCountMax}\" 
-  agentVMSize=\"${agentVMSize}\" 
-  osDiskSizeGB=\"${osDiskSizeGB}\" 
+  networkPolicy=\"${networkPolicy}\"
+  networkPlugin=\"${networkPlugin}\"
+  dnsZoneRG=\"${dnsZoneRG}\"
+  dnsZoneName=\"${dnsZoneName}\"
+  agentCount=\"${agentCount}\"
+  agentCountMax=\"${agentCountMax}\"
+  agentVMSize=\"${agentVMSize}\"
+  osDiskSizeGB=\"${osDiskSizeGB}\"
   privateCluster=\"${privateCluster}\"
 ]"
 
@@ -215,8 +216,9 @@ if [[ "$AAD_INTEGRATED_TENANT" ]]; then
   if [[  "$orig_tenant" ]]; then
       echo "You have selected an alternative tenent for cluster RBAC users, you will need to auth so we can create the required Apps, press ENTER to continue.."
       read
-      
+
       az login --tenant $AAD_INTEGRATED_TENANT  --allow-no-subscriptions >/dev/null
+      az account set -s $orig_sub > /dev/null
   fi
 
   # Get the user details to create the kubernetes role assignment
@@ -234,7 +236,7 @@ if [[ "$AAD_INTEGRATED_TENANT" ]]; then
 
   # Delegate permissions for : Directory.Read.All
   # Applicaion permissions for : Directory.Read.All
-  # Expose an API : Scope: ${ADSERVER_APP}, Admin Concent, 
+  # Expose an API : Scope: ${ADSERVER_APP}, Admin Concent,
   # https://docs.microsoft.com/en-us/azure/aks/azure-ad-integration-cli
 
   ADSERVER_APP="${CLUSTER_NAME}-ADServer"
@@ -247,6 +249,7 @@ if [[ "$AAD_INTEGRATED_TENANT" ]]; then
     if [ "$orig_tenant" ]; then
       echo "Changing back to defalt tenant [${orig_tenant}] to create Cluster"
       az login --tenant $orig_tenant >/dev/null
+      az account set -s $orig_sub > /dev/null
     fi
     exit 1
   fi
@@ -280,6 +283,7 @@ if [[ "$AAD_INTEGRATED_TENANT" ]]; then
           if [ "$orig_tenant" ]; then
             echo "Changing back to defalt tenant [${orig_tenant}] to create Cluster"
             az login --tenant $orig_tenant >/dev/null
+            az account set -s $orig_sub > /dev/null
           fi
           exit 1
       fi
@@ -297,6 +301,7 @@ if [[ "$AAD_INTEGRATED_TENANT" ]]; then
     if [  "$orig_tenant" ]; then
       echo "Changing back to defalt tenant [${orig_tenant}] to create Cluster"
       az login --tenant $orig_tenant >/dev/null
+      az account set -s $orig_sub > /dev/null
     fi
     exit 1
   fi
@@ -324,6 +329,7 @@ if [[ "$AAD_INTEGRATED_TENANT" ]]; then
   if [ "$orig_tenant" ]; then
       echo "Changing back to defalt tenant [${orig_tenant}] to create Cluster"
       az login --tenant $orig_tenant >/dev/null
+      az account set -s $orig_sub > /dev/null
   fi
 fi
 
@@ -448,7 +454,7 @@ function setup_cluster {
             --set rbac.enabled=true \
             --set verbosityLevel=3 \
             --set aksClusterConfiguration.apiServerAddress=$cluster_api_url
-            
+
 #  --set kubernetes.watchNamespace=$NAMESPACE \
     fi
 
@@ -460,7 +466,7 @@ function setup_cluster {
 
     if [[ "$dnsZoneRG" ]]; then
       echo "Deploying Azure DNS Zone controller, (Zone in rg: ${dnsZoneRG})"
-      # wget -qO - https://raw.githubusercontent.com/khowling/go-private-dns/master/deploy.yaml | sed -e 's/<<rg>>/'"$dnsZoneRG"'/' -e  's/<<subid>>/'"$(az account show --query id -o tsv)"'/' | kubectl apply -f - 
+      # wget -qO - https://raw.githubusercontent.com/khowling/go-private-dns/master/deploy.yaml | sed -e 's/<<rg>>/'"$dnsZoneRG"'/' -e  's/<<subid>>/'"$(az account show --query id -o tsv)"'/' | kubectl apply -f -
 
       helm install  https://github.com/khowling/go-private-dns/blob/master/helm/azure-dns-controller-0.1.0.tgz?raw=true \
         --name template-dns-controller \
@@ -475,7 +481,7 @@ function setup_cluster {
       echo "Deploying cert-manager"
       # Create the namespace for cert-managers
       kubectl create namespace cert-manager
-      
+
       kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v0.11.0/cert-manager.yaml  --validate=false
 
       echo "Creating letsencrypt-prod ClusterIssuer with email ${certEmail} (sleeping 30s to allow webhook)"
@@ -527,9 +533,9 @@ sleep 4m
 yn="y"
 
 while true; do
-    
+
     case $yn in
-        [Yy]* ) 
+        [Yy]* )
 
             ARM_OUTPUT=$(az group deployment create -g $GROUP \
                 --template-file ./azuredeploy.json \
@@ -580,10 +586,10 @@ while true; do
                 read -p "Try template creation again [y/n]?" yn
             fi
             ;;
-        [Nn]* ) 
+        [Nn]* )
             exit;;
-        * ) 
+        * )
             echo "Please answer yes or no.";;
     esac
 done
-        
+
