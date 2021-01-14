@@ -22,6 +22,14 @@
                 "description": "Optional DNS prefix to use with hosted Kubernetes API server FQDN."
             }
         },
+        "osDiskType": {
+            "type": "string",
+            "defaultValue": "Ephemeral",
+            "allowedValues": [
+                "Ephemeral",
+                "Managed"
+            ]
+        },
         "osDiskSizeGB": {
             "defaultValue": 0,
             "minValue": 0,
@@ -48,32 +56,14 @@
             }
         },
         "agentVMSize": {
-            "defaultValue": "Standard_D2s_v3",
+            "defaultValue": "Standard_DS2_v2",
             "type": "string",
             "metadata": {
                 "description": "The size of the Virtual Machine."
             }
         },
-        "aksServicePrincipalObjectId": {
-            "type": "string",
-            "metadata": {
-                "description": "Oject ID against which the Network Contributor roles will be assigned on the subnet"
-            }
-        },
-        "aksServicePrincipalClientId": {
-            "type": "string",
-            "metadata": {
-                "description": "Client ID (used by cloudprovider)"
-            }
-        },
-        "aksServicePrincipalClientSecret": {
-            "type": "string",
-            "metadata": {
-                "description": "The Service Principal Client Secret."
-            }
-        },
         "kubernetesVersion": {
-            "defaultValue": "1.14.8",
+            "defaultValue": "1.19.3",
             "type": "string",
             "metadata": {
                 "description": "The version of Kubernetes."
@@ -134,17 +124,17 @@
             "defaultValue": "",
             "type": "string",
             "metadata": {
-              "description": "Azure DNS Zone RG (add permissions)"
+                "description": "Azure DNS Zone RG (add permissions)"
             }
         },
         "dnsZoneName": {
             "defaultValue": "",
             "type": "string",
             "metadata": {
-              "description": "Azure DNS Zone name (add permissions)"
+                "description": "Azure DNS Zone name (add permissions)"
             }
         },
-        "createVNET" : {
+        "createVNET": {
             "type": "bool",
             "defaultValue": false
         },
@@ -152,49 +142,49 @@
             "type": "string",
             "defaultValue": "10.240.0.0/16",
             "metadata": {
-              "description": "Address prefix"
+                "description": "Address prefix"
             }
         },
         "vnetAksSubnetAddressPrefix": {
             "type": "string",
             "defaultValue": "10.240.0.0/17",
             "metadata": {
-              "description": "Address prefix"
+                "description": "Address prefix"
             }
         },
         "vnetInternalLBSubnetAddressPrefix": {
             "type": "string",
             "defaultValue": "10.240.128.0/24",
             "metadata": {
-              "description": "Address prefix"
+                "description": "Address prefix"
             }
         },
         "vnetAppGatewaySubnetAddressPrefix": {
             "type": "string",
             "defaultValue": "10.240.129.0/24",
             "metadata": {
-              "description": "Address prefix"
+                "description": "Address prefix"
             }
         },
         "vnetFirewallSubnetAddressPrefix": {
             "type": "string",
             "defaultValue": "10.240.130.0/26",
             "metadata": {
-              "description": "Address prefix"
+                "description": "Address prefix"
             }
         },
         "vnetFirewallPrivateIPAlways4": {
             "type": "string",
             "defaultValue": "10.240.130.4",
             "metadata": {
-              "description": "Address prefix"
+                "description": "Address prefix"
             }
         },
         "vnetOnPremSubnetAddressPrefix": {
             "type": "string",
             "defaultValue": "10.240.130.64/26",
             "metadata": {
-              "description": "Address prefix"
+                "description": "Address prefix"
             }
         },
         "serviceCidr": {
@@ -225,35 +215,21 @@
                 "description": "A CIDR notation IP for Docker bridge."
             }
         },
-        "AAD_ClientAppID":{
-            "defaultValue": "",
-            "type":"string",
-            "metadata": {
-                "description": "The Application ID for the Client App Service Principal"
-            }
-        },
-        "AAD_ServerAppID":{
-            "defaultValue": "",
-            "type":"string",
-            "metadata": {
-                "description": "The Application ID for the Server App Service Principal"
-            }
-        },
-        "AAD_TenantID":{
-            "defaultValue": "",
-            "type":"string",
+        "enable_aad": {
+            "defaultValue": false,
+            "type": "bool",
             "metadata": {
                 "description": "The Azure AD Tenant where the cluster will reside"
             }
         },
-        "AAD_ServerAppSecret":{
+        "aad_tenant_id": {
             "defaultValue": "",
-            "type":"securestring",
+            "type": "string",
             "metadata": {
-                "description": "The Service Principal Secret for the Client App Service Principal"
+                "description": "Alternate aad tenant (optional)"
             }
         },
-        "applicationGatewaySku": {
+        "applicationGateways_sku": {
             "defaultValue": "",
             "allowedValues": [
                 "Standard_v2",
@@ -265,7 +241,7 @@
                 "description": "The sku of the Application Gateway. Default: WAF_v2 (Detection mode). In order to further customize WAF, use azure portal or cli."
             }
         },
-        "acrSku": {
+        "registries_sku": {
             "type": "string",
             "defaultValue": "",
             "allowedValues": [
@@ -281,18 +257,18 @@
             "type": "bool",
             "defaultValue": false
         },
-        "azureFirewallEgress": {
+        "azureFirewalls": {
             "type": "bool",
             "defaultValue": false
         },
-        "azureFirewallTCPAllow": {
+        "CloudServiceTag": {
             "type": "string",
             "metadata": {
                 "description": "Service tags for Allowed firewall TCP outbound connections from AKS subnet"
             },
             "defaultValue": "*",
             "allowedValues": [
-                "*",                
+                "*",
                 "AzureCloud.CentralUS",
                 "AzureCloud.EastUS",
                 "AzureCloud.EastUS2",
@@ -301,64 +277,61 @@
                 "AzureCloud.UKSouth2",
                 "AzureCloud.UKWest",
                 "AzureCloud.WestEurope",
+                "AzureCloud.NorthEurope",
                 "AzureCloud.WestUS",
                 "AzureCloud.WestUS2",
                 "AzureCloud.WestCentralUS"
             ]
         },
-        "azureContainerInsights": {
+        "omsagent": {
             "type": "bool",
             "defaultValue": false
         }
-    }, 
+    },
     "variables": {
         "acrName": "[concat(replace(parameters('resourceName'),'-', ''), 'acr')]",
         "vnetName": "[concat(parameters('resourceName'), '-vnet')]",
         "firewallName": "[concat(parameters('resourceName'), '-fw')]",
         "workspaceName": "[concat(parameters('resourceName'), '-workspace')]",
-
         "vnetAppGatewaySubnet": {
             "name": "AppGwIngressSubnet",
             "properties": {
-            "addressPrefix": "[parameters('vnetAppGatewaySubnetAddressPrefix')]"
+                "addressPrefix": "[parameters('vnetAppGatewaySubnetAddressPrefix')]"
             }
         },
         "vnetFirewallSubnet": {
             "name": "AzureFirewallSubnet",
             "properties": {
-            "addressPrefix": "[parameters('vnetFirewallSubnetAddressPrefix')]"
+                "addressPrefix": "[parameters('vnetFirewallSubnetAddressPrefix')]"
             }
         },
         "vnetOnPremSubnet": {
             "name": "GatewaySubnet",
             "properties": {
-            "addressPrefix": "[parameters('vnetOnPremSubnetAddressPrefix')]"
+                "addressPrefix": "[parameters('vnetOnPremSubnetAddressPrefix')]"
             }
         },
-        "vnetAksSubnetName": "AgentNodePoolsSubnet", 
+        "vnetAksSubnetName": "AgentNodePoolsSubnet",
         "default_subnets": [
             {
-            "name":  "[variables('vnetAksSubnetName')]",
-            "properties": {
-                "addressPrefix": "[parameters('vnetAksSubnetAddressPrefix')]"
-            }
+                "name": "[variables('vnetAksSubnetName')]",
+                "properties": {
+                    "addressPrefix": "[parameters('vnetAksSubnetAddressPrefix')]"
+                }
             },
             {
-            "name": "InternalLBSubnet",
-            "properties": {
-                "addressPrefix": "[parameters('vnetInternalLBSubnetAddressPrefix')]"
-            }
+                "name": "InternalLBSubnet",
+                "properties": {
+                    "addressPrefix": "[parameters('vnetInternalLBSubnetAddressPrefix')]"
+                }
             }
         ],
-        "default_plus_appgw_subnets" : "[if (not(empty(parameters('applicationGatewaySku'))), concat(array(variables('default_subnets')),array(variables('vnetAppGatewaySubnet'))), array(variables('default_subnets')))]",
-        "default_plus_appgw_fw_subnets" : "[if (parameters('azureFirewallEgress'), concat(array(variables('default_plus_appgw_subnets')),array(variables('vnetFirewallSubnet'))), array(variables('default_plus_appgw_subnets')))]",
-        "default_plus_appgw_fw_onprem_subnets" : "[if (parameters('createOnPremGW'), concat(array(variables('default_plus_appgw_fw_subnets')),array(variables('vnetOnPremSubnet'))), array(variables('default_plus_appgw_fw_subnets')))]",
-
-        "aks_integrated_AadProfile": {
-            "clientAppID": "[parameters('AAD_ClientAppID')]",
-            "serverAppID": "[parameters('AAD_ServerAppID')]",
-            "tenantID": "[parameters('AAD_TenantID')]",
-            "serverAppSecret": "[parameters('AAD_ServerAppSecret')]"
+        "default_plus_appgw_subnets": "[if (not(empty(parameters('applicationGateways_sku'))), concat(array(variables('default_subnets')),array(variables('vnetAppGatewaySubnet'))), array(variables('default_subnets')))]",
+        "default_plus_appgw_fw_subnets": "[if (parameters('azureFirewalls'), concat(array(variables('default_plus_appgw_subnets')),array(variables('vnetFirewallSubnet'))), array(variables('default_plus_appgw_subnets')))]",
+        "default_plus_appgw_fw_onprem_subnets": "[if (parameters('createOnPremGW'), concat(array(variables('default_plus_appgw_fw_subnets')),array(variables('vnetOnPremSubnet'))), array(variables('default_plus_appgw_fw_subnets')))]",
+        "aadProfile": {
+            "managed": true,
+            "tenantID": "[parameters('aad_tenant_id')]"
         },
         "routeFwTableName": "[concat(parameters('resourceName'), '-route-fw')]",
         "msiIdentityName": "[concat(replace(parameters('resourceName'),'-', ''),'ingresIdentity')]",
@@ -375,8 +348,10 @@
             "minCount": "[parameters('agentCount')]",
             "maxCount": "[parameters('agentCountMax')]"
         },
-        "nodepool1Profile":  {
+        "nodepool1Profile": {
             "name": "nodepool1",
+            "mode": "System",
+            "osDiskType": "[parameters('osDiskType')]",
             "osDiskSizeGB": "[parameters('osDiskSizeGB')]",
             "count": "[parameters('agentCount')]",
             "vmSize": "[parameters('agentVMSize')]",
@@ -384,12 +359,20 @@
             "vnetSubnetID": "[if(parameters('createVNET'), resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('vnetAksSubnetName')), json('null'))]",
             "maxPods": "[parameters('maxPods')]",
             "type": "VirtualMachineScaleSets",
-            "availabilityZones": [
-                "1", "2", "3"
-                ],
             "enableAutoScaling": "[variables('autoScale')]"
         },
-
+        "identity_user": {
+            "type": "UserAssigned",
+            "userAssignedIdentities": {
+                "[variables('msiIdentityId')]": {
+                    "clientId": "aa",
+                    "principalId": "bb"
+                }
+            }
+        },
+        "identity_system": {
+            "type": "SystemAssigned"
+        },
         "readerRole": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', 'acdd72a7-3385-48ef-bd42-f606fba81ae7')]",
         "networkContributorRole": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', '4d97b98b-1d4f-4787-a291-c67834d212e7')]",
         "appGwContributorRole": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
@@ -399,28 +382,28 @@
     },
     "resources": [
         {
-            "condition": "[not(and( empty(parameters('dnsZoneRG')), empty(parameters('applicationGatewaySku'))))]",
+            "condition": "[not(and( empty(parameters('dnsZoneRG')), empty(parameters('applicationGateways_sku'))))]",
             "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
             "name": "[variables('msiIdentityName')]",
             "apiVersion": "2018-11-30",
             "location": "[resourceGroup().location]"
         },
         {
-            "condition": "[not(empty(parameters('acrSku')))]",
+            "condition": "[not(empty(parameters('registries_sku')))]",
             "name": "[variables('acrName')]",
             "type": "Microsoft.ContainerRegistry/registries",
             "apiVersion": "2017-10-01",
             "location": "[parameters('location')]",
             "comments": "Container registry for storing docker images",
             "tags": {
-              "displayName": "Container Registry",
-              "container.registry": "[variables('acrName')]"
+                "displayName": "Container Registry",
+                "container.registry": "[variables('acrName')]"
             },
             "sku": {
-              "name": "[parameters('acrSku')]"
+                "name": "[parameters('registries_sku')]"
             },
             "properties": {
-              "adminUserEnabled": "[parameters('acrAdminUserEnabled')]"
+                "adminUserEnabled": "[parameters('acrAdminUserEnabled')]"
             }
         },
         {
@@ -439,26 +422,26 @@
             }
         },
         {
-            "condition": "[parameters('azureFirewallEgress')]",
+            "condition": "[parameters('azureFirewalls')]",
             "type": "Microsoft.Network/routeTables",
             "name": "[variables('routeFwTableName')]",
             "apiVersion": "2019-04-01",
             "location": "[parameters('location')]",
             "properties": {
-              "routes": [
-                {
-                  "name": "AKSNodesEgress",
-                  "properties": {
-                    "addressPrefix": "0.0.0.0/0",
-                    "nextHopType": "VirtualAppliance",
-                    "nextHopIpAddress": "[parameters('vnetFirewallPrivateIPAlways4')]"
-                  }
-                }
-              ]
+                "routes": [
+                    {
+                        "name": "AKSNodesEgress",
+                        "properties": {
+                            "addressPrefix": "0.0.0.0/0",
+                            "nextHopType": "VirtualAppliance",
+                            "nextHopIpAddress": "[parameters('vnetFirewallPrivateIPAlways4')]"
+                        }
+                    }
+                ]
             }
         },
         {
-            "condition": "[parameters('azureFirewallEgress')]",
+            "condition": "[parameters('azureFirewalls')]",
             "type": "Microsoft.Resources/deployments",
             "name": "AddDefaultFirewallRouteToAKSSubnet",
             "apiVersion": "2017-05-10",
@@ -469,18 +452,20 @@
                     "contentVersion": "1.0.0.0",
                     "parameters": {},
                     "variables": {},
-                    "resources": [{
-                        "apiVersion": "2019-04-01",
-                        "type": "Microsoft.Network/virtualNetworks/subnets",
-                        "name": "[concat(variables('vnetName'), '/', variables('vnetAksSubnetName'))]",
-                        "location": "[parameters('location')]",
-                        "properties": {
-                            "addressPrefix": "[parameters('vnetAksSubnetAddressPrefix')]",
-                            "routeTable": {
-                                "id": "[resourceId('Microsoft.Network/routeTables', variables('routeFwTableName'))]"
-                              }
+                    "resources": [
+                        {
+                            "apiVersion": "2019-04-01",
+                            "type": "Microsoft.Network/virtualNetworks/subnets",
+                            "name": "[concat(variables('vnetName'), '/', variables('vnetAksSubnetName'))]",
+                            "location": "[parameters('location')]",
+                            "properties": {
+                                "addressPrefix": "[parameters('vnetAksSubnetAddressPrefix')]",
+                                "routeTable": {
+                                    "id": "[resourceId('Microsoft.Network/routeTables', variables('routeFwTableName'))]"
+                                }
+                            }
                         }
-                    }]
+                    ]
                 }
             },
             "dependsOn": [
@@ -489,7 +474,7 @@
             ]
         },
         {
-            "condition": "[parameters('azureFirewallEgress')]",
+            "condition": "[parameters('azureFirewalls')]",
             "type": "Microsoft.Network/publicIPAddresses",
             "name": "[variables('firewallPublicIpName')]",
             "apiVersion": "2018-08-01",
@@ -503,121 +488,196 @@
             }
         },
         {
-            "condition": "[parameters('azureFirewallEgress')]",
+            "condition": "[parameters('azureFirewalls')]",
             "apiVersion": "2019-04-01",
             "type": "Microsoft.Network/azureFirewalls",
             "name": "[variables('firewallName')]",
             "location": "[parameters('location')]",
-            "zones": [
-                "1", "2", "3"
-            ],
             "dependsOn": [
                 "[concat('Microsoft.Network/virtualNetworks/', variables('vnetName'))]",
                 "[concat('Microsoft.Network/publicIPAddresses/', variables('firewallPublicIpName'))]"
             ],
             "properties": {
-              "ipConfigurations": [{
-                "name": "[concat('IpConf', '1')]",
-                "properties": {
-                    "subnet": {
-                        "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets',variables('vnetName'), variables('vnetFirewallSubnet').name)]"
-                    },
-                    "publicIPAddress": {
-                        "id": "[resourceId('Microsoft.Network/publicIPAddresses',variables('firewallPublicIpName'))]"
+                "ipConfigurations": [
+                    {
+                        "name": "[concat('IpConf', '1')]",
+                        "properties": {
+                            "subnet": {
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets',variables('vnetName'), variables('vnetFirewallSubnet').name)]"
+                            },
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses',variables('firewallPublicIpName'))]"
+                            }
+                        }
                     }
-                }
-              }],
-              "threatIntelMode": "Alert",
-              "applicationRuleCollections": [
-                {
-                  "name": "clusterRc1",
-                  "properties": {
-                    "priority": 101,
-                    "action": {
-                      "type": "Allow"
-                    },
-                    "rules": [
-                      {
-                        "name": "clusterEgressRule1",
-                        "protocols": [
-                          {
-                            "port": 443,
-                            "protocolType": "Https"
-                          }
-                        ],
-                        "targetFqdns": [ "[concat('*.hcp.', parameters('location'), '.azmk8s.io')]", "[concat('*.tun.', parameters('location'), '.azmk8s.io')]" ],
-                        "sourceAddresses": [ "[parameters('vnetAksSubnetAddressPrefix')]" ]
-                      },
-                      {
-                        "name": "clusterEgressRule2",
-                        "protocols": [
-                          {
-                            "port": 443,
-                            "protocolType": "Https"
-                          }
-                        ],
-                        "targetFqdns": [ "aksrepos.azurecr.io", "*.blob.core.windows.net", "mcr.microsoft.com", "*.cdn.mscr.io", "management.azure.com", "login.microsoftonline.com", "ntp.ubuntu.com", "packages.microsoft.com", "acs-mirror.azureedge.net" ],
-                        "sourceAddresses": [ "[parameters('vnetAksSubnetAddressPrefix')]" ]
-                      },
-                      {
-                        "name": "clusterEgressRule3",
-                        "protocols": [
-                          {
-                            "port": 80,
-                            "protocolType": "Http"
-                          }
-                        ],
-                        "targetFqdns": [ "security.ubuntu.com", "azure.archive.ubuntu.com", "changelogs.ubuntu.com" ],
-                        "sourceAddresses": [ "[parameters('vnetAksSubnetAddressPrefix')]" ]
-                      },
-                      {
-                        "name": "clusterEgressMonitor",
-                        "protocols": [
-                          {
-                            "port": 443,
-                            "protocolType": "Https"
-                          }
-                        ],
-                        "targetFqdns": [ "dc.services.visualstudio.com", "*.ods.opinsights.azure.com", "*.oms.opinsights.azure.com", "*.microsoftonline.com", "*.monitoring.azure.com" ],
-                        "sourceAddresses": [ "[parameters('vnetAksSubnetAddressPrefix')]" ]
-                      }
-                    ]
-                  }
-                }
-              ],
-              "networkRuleCollections": [
-                {
-                  "name": "netRc1",
-                  "properties": {
-                    "priority": 100,
-                    "action": {
-                      "type": "Allow"
-                    },
-                    "rules": [
-                      {
-                        "name": "netRule1",
-                        "protocols": [
-                          "TCP"
-                        ],
-                        "sourceAddresses": [
-                          "[parameters('vnetAksSubnetAddressPrefix')]"
-                        ],
-                        "destinationAddresses": [
-                            "[parameters('azureFirewallTCPAllow')]"
-                        ],
-                        "destinationPorts": [
-                          "9000",
-                          "22"
-                        ]
-                      }
-                    ]
-                  }
-                }
-              ]
+                ],
+                "threatIntelMode": "Alert",
+                "applicationRuleCollections": [
+                    {
+                        "name": "clusterRc1",
+                        "properties": {
+                            "priority": 101,
+                            "action": {
+                                "type": "Allow"
+                            },
+                            "rules": [
+                                {
+                                    "name": "MicrosoftServices",
+                                    "protocols": [
+                                        {
+                                            "port": 443,
+                                            "protocolType": "Https"
+                                        }
+                                    ],
+                                    "targetFqdns": [
+                                        "[concat('*.hcp.', parameters('location'), '.azmk8s.io')]",
+                                        "mcr.microsoft.com",
+                                        "*.data.mcr.microsoft.com",
+                                        "management.azure.com",
+                                        "login.microsoftonline.com",
+                                        "packages.microsoft.com",
+                                        "acs-mirror.azureedge.net"
+                                    ],
+                                    "sourceAddresses": [
+                                        "[parameters('vnetAksSubnetAddressPrefix')]"
+                                    ]
+                                },
+                                {
+                                    "name": "UbuntuOS",
+                                    "protocols": [
+                                        {
+                                            "port": 80,
+                                            "protocolType": "Http"
+                                        }
+                                    ],
+                                    "targetFqdns": [
+                                        "security.ubuntu.com",
+                                        "azure.archive.ubuntu.com",
+                                        "changelogs.ubuntu.com"
+                                    ],
+                                    "sourceAddresses": [
+                                        "[parameters('vnetAksSubnetAddressPrefix')]"
+                                    ]
+                                },
+                                {
+                                    "name": "Monitor",
+                                    "protocols": [
+                                        {
+                                            "port": 443,
+                                            "protocolType": "Https"
+                                        }
+                                    ],
+                                    "targetFqdns": [
+                                        "dc.services.visualstudio.com",
+                                        "*.ods.opinsights.azure.com",
+                                        "*.oms.opinsights.azure.com",
+                                        "*.monitoring.azure.com"
+                                    ],
+                                    "sourceAddresses": [
+                                        "[parameters('vnetAksSubnetAddressPrefix')]"
+                                    ]
+                                },
+                                {
+                                    "name": "AzurePolicy",
+                                    "protocols": [
+                                        {
+                                            "port": 443,
+                                            "protocolType": "Https"
+                                        }
+                                    ],
+                                    "targetFqdns": [
+                                        "data.policy.core.windows.net",
+                                        "store.policy.core.windows.net",
+                                        "gov-prod-policy-data.trafficmanager.net",
+                                        "raw.githubusercontent.com",
+                                        "dc.services.visualstudio.com"
+                                    ],
+                                    "sourceAddresses": [
+                                        "[parameters('vnetAksSubnetAddressPrefix')]"
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "networkRuleCollections": [
+                    {
+                        "name": "netRc1",
+                        "properties": {
+                            "priority": 100,
+                            "action": {
+                                "type": "Allow"
+                            },
+                            "rules": [
+                                {
+                                    "name": "ControlPlaneTCP",
+                                    "protocols": [
+                                        "TCP"
+                                    ],
+                                    "sourceAddresses": [
+                                        "[parameters('vnetAksSubnetAddressPrefix')]"
+                                    ],
+                                    "destinationAddresses": [
+                                        "[parameters('CloudServiceTag')]"
+                                    ],
+                                    "destinationPorts": [
+                                        "9000", /* For tunneled secure communication between the nodes and the control plane. */
+                                        "22"
+                                    ]
+                                },
+                                {
+                                    "name": "ControlPlaneUDP",
+                                    "protocols": [
+                                        "UDP"
+                                    ],
+                                    "sourceAddresses": [
+                                        "[parameters('vnetAksSubnetAddressPrefix')]"
+                                    ],
+                                    "destinationAddresses": [
+                                        "[parameters('CloudServiceTag')]"
+                                    ],
+                                    "destinationPorts": [
+                                        "1194" /* For tunneled secure communication between the nodes and the control plane. */
+                                    ]
+                                },
+                                {
+                                    "name": "NetworkTimeProtocol",
+                                    "protocols": [
+                                        "UDP"
+                                    ],
+                                    "sourceAddresses": [
+                                        "[parameters('vnetAksSubnetAddressPrefix')]"
+                                    ],
+                                    "destinationAddresses": [
+                                        "ntp.ubuntu.com"
+                                    ],
+                                    "destinationPorts": [
+                                        "123"
+                                    ]
+                                },
+                                {
+                                    "name": "AzureMonitorForContainers",
+                                    "protocols": [
+                                        "TCP"
+                                    ],
+                                    "sourceAddresses": [
+                                        "[parameters('vnetAksSubnetAddressPrefix')]"
+                                    ],
+                                    "destinationAddresses": [
+                                        "AzureMonitor"
+                                    ],
+                                    "destinationPorts": [
+                                        "443"
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                ]
             }
         },
         {
-            "condition": "[not(empty(parameters('applicationGatewaySku')))]",
+            "condition": "[not(empty(parameters('applicationGateways_sku')))]",
             "type": "Microsoft.Network/publicIPAddresses",
             "name": "[variables('applicationGatewayPublicIpName')]",
             "apiVersion": "2018-08-01",
@@ -630,7 +690,7 @@
             }
         },
         {
-            "condition": "[not(empty(parameters('applicationGatewaySku')))]",
+            "condition": "[not(empty(parameters('applicationGateways_sku')))]",
             "type": "Microsoft.Network/applicationGateways",
             "name": "[variables('applicationGatewayName')]",
             "apiVersion": "2018-08-01",
@@ -640,79 +700,92 @@
             },
             "properties": {
                 "sku": {
-                    "name": "[parameters('applicationGatewaySku')]",
-                    "tier": "[parameters('applicationGatewaySku')]",
+                    "name": "[parameters('applicationGateways_sku')]",
+                    "tier": "[parameters('applicationGateways_sku')]",
                     "capacity": 2
                 },
-                "frontendIPConfigurations": [{
-                    "name": "appGatewayFrontendIP",
-                    "properties": {
-                        "PublicIPAddress": {
-                            "id": "[resourceId('Microsoft.Network/publicIPAddresses',variables('applicationGatewayPublicIpName'))]"
+                "frontendIPConfigurations": [
+                    {
+                        "name": "appGatewayFrontendIP",
+                        "properties": {
+                            "PublicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses',variables('applicationGatewayPublicIpName'))]"
+                            }
                         }
                     }
-                }],
-                "frontendPorts": [{
-                    "name": "httpPort",
-                    "properties": {
-                        "Port": 80
-                    }
-                },
-                {
-                    "name": "httpsPort",
-                    "properties": {
-                        "Port": 443
-                    }
-                }],
-                "backendAddressPools": [{
-                    "name": "bepool",
-                    "properties": {
-                        "backendAddresses": []
-                    }
-                }],
-                "backendHttpSettingsCollection": [{
-                    "name": "setting",
-                    "properties": {
-                        "port": 80,
-                        "protocol": "Http"
-                    }
-                }],
-                "httpListeners": [{
-                    "name": "httpListener",
-                    "properties": {
-                        "protocol": "Http",
-                        "frontendPort": {
-                            "id": "[resourceId('Microsoft.Network/applicationGateways/frontendPorts', variables('applicationGatewayName'), 'httpPort')]"
-                        },
-                        "frontendIPConfiguration": {
-                            "id": "[resourceId('Microsoft.Network/applicationGateways/frontendIPConfigurations', variables('applicationGatewayName'), 'appGatewayFrontendIP')]"
+                ],
+                "frontendPorts": [
+                    {
+                        "name": "httpPort",
+                        "properties": {
+                            "Port": 80
+                        }
+                    },
+                    {
+                        "name": "httpsPort",
+                        "properties": {
+                            "Port": 443
                         }
                     }
-                }],
-                "requestRoutingRules": [{
-                    "name": "rule1",
-                    "properties": {
-                        "httpListener": {
-                            "id": "[resourceId('Microsoft.Network/applicationGateways/httpListeners', variables('applicationGatewayName'), 'httpListener')]"
-                        },
-                        "backendAddressPool": {
-                            "id": "[resourceId('Microsoft.Network/applicationGateways/backendAddressPools', variables('applicationGatewayName'), 'bepool')]"
-                        },
-                        "backendHttpSettings": {
-                            "id": "[resourceId('Microsoft.Network/applicationGateways/backendHttpSettingsCollection', variables('applicationGatewayName'), 'setting')]"
+                ],
+                "backendAddressPools": [
+                    {
+                        "name": "bepool",
+                        "properties": {
+                            "backendAddresses": []
                         }
                     }
-                }],
-                "gatewayIPConfigurations": [{
-                    "name": "appGatewayIpConfig",
-                    "properties": {
-                        "subnet": {
-                            "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets',variables('vnetName'), variables('vnetAppGatewaySubnet').name)]"
+                ],
+                "backendHttpSettingsCollection": [
+                    {
+                        "name": "setting",
+                        "properties": {
+                            "port": 80,
+                            "protocol": "Http"
                         }
                     }
-                }],
-                
-                "webApplicationFirewallConfiguration": "[if(equals(parameters('applicationGatewaySku'), 'WAF_v2'), variables('webApplicationFirewallConfiguration'), json('null'))]"
+                ],
+                "httpListeners": [
+                    {
+                        "name": "httpListener",
+                        "properties": {
+                            "protocol": "Http",
+                            "frontendPort": {
+                                "id": "[resourceId('Microsoft.Network/applicationGateways/frontendPorts', variables('applicationGatewayName'), 'httpPort')]"
+                            },
+                            "frontendIPConfiguration": {
+                                "id": "[resourceId('Microsoft.Network/applicationGateways/frontendIPConfigurations', variables('applicationGatewayName'), 'appGatewayFrontendIP')]"
+                            }
+                        }
+                    }
+                ],
+                "requestRoutingRules": [
+                    {
+                        "name": "rule1",
+                        "properties": {
+                            "httpListener": {
+                                "id": "[resourceId('Microsoft.Network/applicationGateways/httpListeners', variables('applicationGatewayName'), 'httpListener')]"
+                            },
+                            "backendAddressPool": {
+                                "id": "[resourceId('Microsoft.Network/applicationGateways/backendAddressPools', variables('applicationGatewayName'), 'bepool')]"
+                            },
+                            "backendHttpSettings": {
+                                "id": "[resourceId('Microsoft.Network/applicationGateways/backendHttpSettingsCollection', variables('applicationGatewayName'), 'setting')]"
+                            }
+                        }
+                    }
+                ],
+                "gatewayIPConfigurations": [
+                    {
+                        "name": "appGatewayIpConfig",
+                        "properties": {
+                            "subnet": {
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets',variables('vnetName'), variables('vnetAppGatewaySubnet').name)]"
+                            }
+                        }
+                    }
+                ],
+                "webApplicationFirewallConfiguration": "[if(equals(parameters('applicationGateways_sku'), 'WAF_v2'), variables('webApplicationFirewallConfiguration'), json('null'))]"
             },
             "dependsOn": [
                 "[concat('Microsoft.Network/publicIPAddresses/', variables('applicationGatewayPublicIpName'))]",
@@ -720,27 +793,26 @@
             ]
         },
         {
-            "condition": "[parameters('azureContainerInsights')]",
+            "condition": "[parameters('omsagent')]",
             "type": "Microsoft.OperationalInsights/workspaces",
             "name": "[variables('workspaceName')]",
             "apiVersion": "2015-11-01-preview",
             "location": "[parameters('location')]",
-            "properties": {
-            }
+            "properties": {}
         },
         {
             "type": "Microsoft.ContainerService/managedClusters",
             "name": "[parameters('resourceName')]",
-            "apiVersion": "2019-08-01",
+            "apiVersion": "2020-12-01",
             "location": "[parameters('location')]",
             "properties": {
                 "kubernetesVersion": "[parameters('kubernetesVersion')]",
                 "enableRBAC": "[parameters('enableRBAC')]",
                 "dnsPrefix": "[parameters('dnsPrefix')]",
-                "aadProfile": "[if ( empty(parameters('AAD_TenantID')), json('null'), variables('aks_integrated_AadProfile') )]",
+                "aadProfile": "[if ( parameters('enable_aad'), variables('aadProfile'), json('null') )]",
                 "addonProfiles": {
                     "omsagent": {
-                        "enabled": "[parameters('azureContainerInsights')]",
+                        "enabled": "[parameters('omsagent')]",
                         "config": {
                             "logAnalyticsWorkspaceResourceID": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('workspaceName'))]"
                         }
@@ -750,10 +822,6 @@
                     "enablePrivateCluster": "[parameters('privateCluster')]"
                 },
                 "agentPoolProfiles": "[if (variables('autoScale'), array (union(variables('nodepool1Profile'), variables('autoScaleProfile'))), array(variables('nodepool1Profile')))]",
-                "servicePrincipalProfile": {
-                    "clientId": "[parameters('aksServicePrincipalClientId')]",
-                    "secret": "[parameters('aksServicePrincipalClientSecret')]"
-                },
                 "enablePodSecurityPolicy": "[parameters('podSecurityPolicy')]",
                 "networkProfile": {
                     "loadBalancerSku": "standard",
@@ -765,10 +833,12 @@
                     "dockerBridgeCidr": "[parameters('dockerBridgeCidr')]"
                 }
             },
+            "identity": "[if (not(and( empty(parameters('dnsZoneRG')), empty(parameters('applicationGateways_sku')))),  variables('identity_user'),  variables('identity_system'))]",
             "dependsOn": [
                 "[concat('Microsoft.Network/virtualNetworks/', variables('vnetName'))]",
                 "[concat('Microsoft.Resources/deployments/', 'NetworkRoleAssignmentForKubenetesSPN')]",
-                "[concat('Microsoft.OperationalInsights/workspaces/', variables('workspaceName'))]"
+                "[concat('Microsoft.OperationalInsights/workspaces/', variables('workspaceName'))]",
+                "[variables('msiIdentityId')]"
             ]
         },
         {
@@ -790,7 +860,7 @@
                             "name": "[concat(variables('vnetName'), '/', variables('vnetAksSubnetName'),'/Microsoft.Authorization/', guid(resourceGroup().id, 'aksvnetaccess'))]",
                             "properties": {
                                 "roleDefinitionId": "[variables('networkContributorRole')]",
-                                "principalId": "[parameters('aksServicePrincipalObjectId')]"
+                                "principalId": "[reference(variables('msiIdentityId'), '2018-11-30').principalId]"
                             }
                         }
                     ]
@@ -801,7 +871,7 @@
             ]
         },
         {
-            "condition": "[not(empty(parameters('acrSku')))]",
+            "condition": "[not(empty(parameters('registries_sku')))]",
             "type": "Microsoft.Resources/deployments",
             "name": "ACRRoleAssignmentForKubenetesSPN",
             "apiVersion": "2017-05-10",
@@ -819,7 +889,7 @@
                             "name": "[concat(variables('acrName'), '/Microsoft.Authorization/', guid(resourceGroup().id, 'identityacraccess'))]",
                             "properties": {
                                 "roleDefinitionId": "[variables('AcrPullRole')]",
-                                "principalId": "[parameters('aksServicePrincipalObjectId')]"
+                                "principalId": "[reference(variables('msiIdentityId'), '2018-11-30').principalId]"
                             }
                         }
                     ]
@@ -830,7 +900,7 @@
             ]
         },
         {
-            "condition": "[not(empty(parameters('applicationGatewaySku')))]",
+            "condition": "[not(empty(parameters('applicationGateways_sku')))]",
             "type": "Microsoft.Resources/deployments",
             "name": "ClusterRoleAssignmentDeploymentForAppGW",
             "apiVersion": "2017-05-10",
@@ -848,7 +918,7 @@
                             "name": "[concat(variables('applicationGatewayName'), '/Microsoft.Authorization/', guid(resourceGroup().id, 'identityappgwaccess'))]",
                             "properties": {
                                 "roleDefinitionId": "[variables('appGwContributorRole')]",
-                                "principalId": "[if (empty(parameters('applicationGatewaySku')), '', reference(variables('msiIdentityId'), '2018-11-30').principalId)]",
+                                "principalId": "[if (empty(parameters('applicationGateways_sku')), '', reference(variables('msiIdentityId'), '2018-11-30').principalId)]",
                                 "scope": "[resourceId('Microsoft.Network/applicationgateways', variables('applicationGatewayName'))]"
                             }
                         },
@@ -858,7 +928,7 @@
                             "name": "[guid(resourceGroup().id, 'identityappgwrgaccess')]",
                             "properties": {
                                 "roleDefinitionId": "[variables('readerRole')]",
-                                "principalId": "[if (empty(parameters('applicationGatewaySku')), '', reference(variables('msiIdentityId'), '2018-11-30').principalId)]",
+                                "principalId": "[if (empty(parameters('applicationGateways_sku')), '', reference(variables('msiIdentityId'), '2018-11-30').principalId)]",
                                 "scope": "[resourceGroup().id]"
                             }
                         }
@@ -871,7 +941,7 @@
             ]
         },
         {
-            "condition": "[or(not(empty(parameters('dnsZoneRG'))), not(empty(parameters('applicationGatewaySku'))) ) ]",
+            "condition": "[or(not(empty(parameters('dnsZoneRG'))), not(empty(parameters('applicationGateways_sku'))) ) ]",
             "type": "Microsoft.Resources/deployments",
             "name": "ClusterRoleAssignmentDeploymentForDNSZone",
             "apiVersion": "2017-05-10",
@@ -889,7 +959,7 @@
                             "name": "[concat(variables('msiIdentityName'), '/Microsoft.Authorization/', guid(resourceGroup().id, 'aksidentityaccess'))]",
                             "properties": {
                                 "roleDefinitionId": "[variables('managedIdentityOperatorRole')]",
-                                "principalId": "[parameters('aksServicePrincipalObjectId')]",
+                                "principalId": "[reference(variables('msiIdentityId'), '2018-11-30').principalId]",
                                 "scope": "[variables('msiIdentityId')]",
                                 "principalType": "ServicePrincipal"
                             }
@@ -952,16 +1022,15 @@
         },
         "applicationGatewayName": {
             "type": "string",
-            "value": "[if(empty(parameters('applicationGatewaySku')),'-',variables('applicationGatewayName'))]"
+            "value": "[if(empty(parameters('applicationGateways_sku')),'-',variables('applicationGatewayName'))]"
         },
         "msiIdentityResourceId": {
             "type": "string",
-            "value": "[if( and( empty(parameters('dnsZoneRG')), empty(parameters('applicationGatewaySku'))),'-',variables('msiIdentityId'))]"
+            "value": "[if( and( empty(parameters('dnsZoneRG')), empty(parameters('applicationGateways_sku'))),'-',variables('msiIdentityId'))]"
         },
         "msiIdentityClientId": {
             "type": "string",
-            "value": "[if(and( empty(parameters('dnsZoneRG')), empty(parameters('applicationGatewaySku'))),'-',reference(variables('msiIdentityId'), '2018-11-30').clientId)]"
+            "value": "[if(and( empty(parameters('dnsZoneRG')), empty(parameters('applicationGateways_sku'))),'-',reference(variables('msiIdentityId'), '2018-11-30').clientId)]"
         }
-        
     }
 }
