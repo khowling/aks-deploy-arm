@@ -114,7 +114,8 @@
       "defaultValue": false
     },
     "authorizedIPRanges": {
-      "type": "string"
+      "type": "string",
+      "defaultValue": ""
     },
     "enablePrivateCluster": {
       "type": "bool",

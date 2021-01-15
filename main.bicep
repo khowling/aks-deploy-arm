@@ -44,9 +44,9 @@ resource acr 'Microsoft.ContainerRegistry/registries@2017-10-01' = if (!empty(re
   }
 }
 
-var AcrPullRole = '/subscriptions/${subscription().subscriptionId}/providers/Microsoft.Authorization/roleDefinitions/7f951dda-4ed3-4680-a7ca-43fe172d538d'
+var AcrPullRole = resourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
 resource aks_acr_pull 'Microsoft.ContainerRegistry/registries/providers/roleAssignments@2017-05-01' = if (!empty(registries_sku)) {
-  name: '${acrName}/Microsoft.Authorization/${guid(resourceGroup().id)}identityacraccess'
+  name: '${acrName}/Microsoft.Authorization/${guid(resourceGroup().id, acrName)}'
   properties: {
     roleDefinitionId: AcrPullRole
     principalId: aks.properties.identityProfile.kubeletidentity.objectId
@@ -120,12 +120,12 @@ resource vnet 'Microsoft.Network/virtualNetworks@2020-07-01' = if (create_vnet) 
   }
 }
 
-var networkContributorRole = '/subscriptions/${subscription().subscriptionId}/providers/Microsoft.Authorization/roleDefinitions/4d97b98b-1d4f-4787-a291-c67834d212e7'
+var networkContributorRole = resourceId('Microsoft.Authorization/roleDefinitions', '4d97b98b-1d4f-4787-a291-c67834d212e7')
 resource aks_vnet_cont 'Microsoft.Network/virtualNetworks/subnets/providers/roleAssignments@2020-04-01-preview' = if (create_vnet) {
-  name: '${vnet.name}/${aks_subnet_name}/Microsoft.Authorization/${guid(resourceGroup().id)}'
+  name: '${vnet.name}/${aks_subnet_name}/Microsoft.Authorization/${guid(resourceGroup().id, aks_subnet_name)}'
   properties: {
     roleDefinitionId: networkContributorRole
-    principalId: uai.properties.principalId
+    principalId: user_identity ? uai.properties.principalId : null
     scope: '${vnet.id}/subnets/${aks_subnet_name}'
   }
 }
@@ -399,7 +399,7 @@ var addon_monitoring = {
   }
 }
 
-param authorizedIPRanges string
+param authorizedIPRanges string = ''
 param enablePrivateCluster bool = false
 
 var aks_properties = {
