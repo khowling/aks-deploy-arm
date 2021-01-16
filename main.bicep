@@ -347,6 +347,8 @@ resource fw 'Microsoft.Network/azureFirewalls@2019-04-01' = if (azureFirewalls) 
 
 //---------------------------------------------------------------------------------- AKS
 param ingressApplicationGateway bool = false
+param enableAzureRBAC bool = false
+param upgradeChannel string = ''
 
 var appgw_name = '${resourceName}-appgw'
 
@@ -408,6 +410,7 @@ var aks_properties = {
   dnsPrefix: dnsPrefix
   aadProfile: enable_aad ? {
     managed: true
+    enableAzureRBAC: enableAzureRBAC
     tenantID: aad_tenant_id
   } : null
   apiServerAccessProfile: !empty(authorizedIPRanges) ? {
@@ -428,21 +431,35 @@ var aks_properties = {
     dockerBridgeCidr: dockerBridgeCidr
   }
 }
+
+var aks_properties1 = empty(upgradeChannel) ? aks_properties : union(aks_properties, {
+  autoUpgradeProfile: {
+    upgradeChannel: upgradeChannel
+  }
+})
+var aks_properties2 = ingressApplicationGateway || omsagent ? union(aks_properties1, {
+  addonProfiles: ingressApplicationGateway && omsagent ? union(addon_monitoring, addon_agic) : omsagent ? addon_monitoring : addon_agic
+}) : aks_properties1
+
 //var aks_addonProfiles = ingressApplicationGateway && omsagent ? union(addon_monitoring, addon_agic) : omsagent ? addon_monitoring : ingressApplicationGateway ? addon_agic : null
 
 resource aks 'Microsoft.ContainerService/managedClusters@2020-12-01' = {
   name: resourceName
   location: location
-  properties: ingressApplicationGateway || omsagent ? union(aks_properties, {
-    addonProfiles: ingressApplicationGateway && omsagent ? union(addon_monitoring, addon_agic) : omsagent ? addon_monitoring : addon_agic
-  }) : aks_properties
+  properties: aks_properties2
   identity: user_identity ? aks_identity_user : aks_identity_system
 }
 
+//---------------------------------------------------------------------------------- Container Insights
+
+param retentionInDays int = 30
 var aks_law_name = '${resourceName}-workspace'
 resource aks_law 'Microsoft.OperationalInsights/workspaces@2020-08-01' = if (omsagent) {
   name: aks_law_name
   location: location
+  properties: {
+    retentionInDays: retentionInDays
+  }
 }
 
 /* output!

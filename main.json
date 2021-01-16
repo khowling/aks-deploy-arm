@@ -113,6 +113,14 @@
       "type": "bool",
       "defaultValue": false
     },
+    "enableAzureRBAC": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "upgradeChannel": {
+      "type": "string",
+      "defaultValue": ""
+    },
     "authorizedIPRanges": {
       "type": "string",
       "defaultValue": ""
@@ -120,6 +128,10 @@
     "enablePrivateCluster": {
       "type": "bool",
       "defaultValue": false
+    },
+    "retentionInDays": {
+      "type": "int",
+      "defaultValue": 30
     }
   },
   "functions": [],
@@ -204,7 +216,7 @@
       "kubernetesVersion": "[parameters('kubernetesVersion')]",
       "enableRBAC": true,
       "dnsPrefix": "[parameters('dnsPrefix')]",
-      "aadProfile": "[if(parameters('enable_aad'), createObject('managed', true(), 'tenantID', parameters('aad_tenant_id')), null())]",
+      "aadProfile": "[if(parameters('enable_aad'), createObject('managed', true(), 'enableAzureRBAC', parameters('enableAzureRBAC'), 'tenantID', parameters('aad_tenant_id')), null())]",
       "apiServerAccessProfile": "[if(not(empty(parameters('authorizedIPRanges'))), createObject('authorizedIPRanges', createArray(parameters('authorizedIPRanges'))), createObject('enablePrivateCluster', parameters('enablePrivateCluster')))]",
       "agentPoolProfiles": "[if(variables('autoScale'), array(union(variables('agentPoolProfiles'), variables('autoScaleProfile'))), array(variables('agentPoolProfiles')))]",
       "networkProfile": {
@@ -217,6 +229,8 @@
         "dockerBridgeCidr": "[parameters('dockerBridgeCidr')]"
       }
     },
+    "aks_properties1": "[if(empty(parameters('upgradeChannel')), variables('aks_properties'), union(variables('aks_properties'), createObject('autoUpgradeProfile', createObject('upgradeChannel', parameters('upgradeChannel')))))]",
+    "aks_properties2": "[if(or(parameters('ingressApplicationGateway'), parameters('omsagent')), union(variables('aks_properties1'), createObject('addonProfiles', if(and(parameters('ingressApplicationGateway'), parameters('omsagent')), union(variables('addon_monitoring'), variables('addon_agic')), if(parameters('omsagent'), variables('addon_monitoring'), variables('addon_agic'))))), variables('aks_properties1'))]",
     "aks_law_name": "[format('{0}-workspace', parameters('resourceName'))]"
   },
   "resources": [
@@ -506,7 +520,7 @@
       "apiVersion": "2020-12-01",
       "name": "[parameters('resourceName')]",
       "location": "[parameters('location')]",
-      "properties": "[if(or(parameters('ingressApplicationGateway'), parameters('omsagent')), union(variables('aks_properties'), createObject('addonProfiles', if(and(parameters('ingressApplicationGateway'), parameters('omsagent')), union(variables('addon_monitoring'), variables('addon_agic')), if(parameters('omsagent'), variables('addon_monitoring'), variables('addon_agic'))))), variables('aks_properties'))]",
+      "properties": "[variables('aks_properties2')]",
       "identity": "[if(variables('user_identity'), variables('aks_identity_user'), variables('aks_identity_system'))]",
       "dependsOn": [
         "[resourceId('Microsoft.OperationalInsights/workspaces', variables('aks_law_name'))]",
@@ -519,7 +533,10 @@
       "type": "Microsoft.OperationalInsights/workspaces",
       "apiVersion": "2020-08-01",
       "name": "[variables('aks_law_name')]",
-      "location": "[parameters('location')]"
+      "location": "[parameters('location')]",
+      "properties": {
+        "retentionInDays": "[parameters('retentionInDays')]"
+      }
     }
   ]
 }
