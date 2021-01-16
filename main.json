@@ -105,6 +105,10 @@
       "type": "string",
       "defaultValue": "10.241.130.0/26"
     },
+    "serviceEndpoints": {
+      "type": "array",
+      "defaultValue": []
+    },
     "azureFirewalls": {
       "type": "bool",
       "defaultValue": false
@@ -122,8 +126,8 @@
       "defaultValue": ""
     },
     "authorizedIPRanges": {
-      "type": "string",
-      "defaultValue": ""
+      "type": "array",
+      "defaultValue": []
     },
     "enablePrivateCluster": {
       "type": "bool",
@@ -142,7 +146,7 @@
     "acrName": "[format('{0}acr', replace(parameters('resourceName'), '-', ''))]",
     "AcrPullRole": "[resourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')]",
     "firewallIP": "10.241.130.4",
-    "create_vnet": "[or(parameters('custom_vnet'), parameters('azureFirewalls'))]",
+    "create_vnet": "[or(or(parameters('custom_vnet'), parameters('azureFirewalls')), not(empty(parameters('serviceEndpoints'))))]",
     "vnetName": "[format('{0}-vnet', parameters('resourceName'))]",
     "appgw_subnet_name": "[format('{0}-subnet', variables('appgw_name'))]",
     "appgw_subnet": {
@@ -159,7 +163,7 @@
       }
     },
     "aks_subnet_name": "aks-subnet",
-    "aks_subnet": "[if(parameters('azureFirewalls'), createObject('name', variables('aks_subnet_name'), 'properties', createObject('addressPrefix', parameters('vnetAksSubnetAddressPrefix'), 'routeTable', createObject('id', resourceId('Microsoft.Network/routeTables', variables('routeFwTableName'))))), createObject('name', variables('aks_subnet_name'), 'properties', createObject('addressPrefix', parameters('vnetAksSubnetAddressPrefix'))))]",
+    "aks_subnet": "[if(parameters('azureFirewalls'), createObject('name', variables('aks_subnet_name'), 'properties', createObject('addressPrefix', parameters('vnetAksSubnetAddressPrefix'), 'routeTable', createObject('id', resourceId('Microsoft.Network/routeTables', variables('routeFwTableName'))))), createObject('name', variables('aks_subnet_name'), 'properties', createObject('addressPrefix', parameters('vnetAksSubnetAddressPrefix'), 'serviceEndpoints', parameters('serviceEndpoints'))))]",
     "subnets_1": "[if(parameters('azureFirewalls'), concat(array(variables('aks_subnet')), array(variables('fw_subnet'))), array(variables('aks_subnet')))]",
     "final_subnets": "[if(parameters('ingressApplicationGateway'), concat(array(variables('subnets_1')), array(variables('appgw_subnet'))), array(variables('subnets_1')))]",
     "networkContributorRole": "[resourceId('Microsoft.Authorization/roleDefinitions', '4d97b98b-1d4f-4787-a291-c67834d212e7')]",
@@ -217,7 +221,7 @@
       "enableRBAC": true,
       "dnsPrefix": "[parameters('dnsPrefix')]",
       "aadProfile": "[if(parameters('enable_aad'), createObject('managed', true(), 'enableAzureRBAC', parameters('enableAzureRBAC'), 'tenantID', parameters('aad_tenant_id')), null())]",
-      "apiServerAccessProfile": "[if(not(empty(parameters('authorizedIPRanges'))), createObject('authorizedIPRanges', createArray(parameters('authorizedIPRanges'))), createObject('enablePrivateCluster', parameters('enablePrivateCluster')))]",
+      "apiServerAccessProfile": "[if(not(empty(parameters('authorizedIPRanges'))), createObject('authorizedIPRanges', parameters('authorizedIPRanges')), createObject('enablePrivateCluster', parameters('enablePrivateCluster')))]",
       "agentPoolProfiles": "[if(variables('autoScale'), array(union(variables('agentPoolProfiles'), variables('autoScaleProfile'))), array(variables('agentPoolProfiles')))]",
       "networkProfile": {
         "loadBalancerSku": "standard",
@@ -258,7 +262,8 @@
       "name": "[format('{0}/Microsoft.Authorization/{1}', variables('acrName'), guid(resourceGroup().id, variables('acrName')))]",
       "properties": {
         "roleDefinitionId": "[variables('AcrPullRole')]",
-        "principalId": "[reference(resourceId('Microsoft.ContainerService/managedClusters', parameters('resourceName'))).identityProfile.kubeletidentity.objectId]"
+        "principalId": "[reference(resourceId('Microsoft.ContainerService/managedClusters', parameters('resourceName'))).identityProfile.kubeletidentity.objectId]",
+        "principalType": "ServicePrincipal"
       },
       "dependsOn": [
         "[resourceId('Microsoft.ContainerService/managedClusters', parameters('resourceName'))]"
@@ -287,7 +292,7 @@
       "properties": {
         "roleDefinitionId": "[variables('networkContributorRole')]",
         "principalId": "[if(variables('user_identity'), reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('user_identity_name'))).principalId, null())]",
-        "scope": "[format('{0}/subnets/{1}', resourceId('Microsoft.Network/virtualNetworks', variables('vnetName')), variables('aks_subnet_name'))]"
+        "principalType": "ServicePrincipal"
       },
       "dependsOn": [
         "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('user_identity_name'))]",

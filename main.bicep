@@ -50,6 +50,7 @@ resource aks_acr_pull 'Microsoft.ContainerRegistry/registries/providers/roleAssi
   properties: {
     roleDefinitionId: AcrPullRole
     principalId: aks.properties.identityProfile.kubeletidentity.objectId
+    principalType: 'ServicePrincipal'
   }
 }
 
@@ -59,9 +60,12 @@ param vnetAksSubnetAddressPrefix string = '10.240.0.0/16'
 //param vnetInternalLBSubnetAddressPrefix string = '10.241.128.0/24'
 param vnetAppGatewaySubnetAddressPrefix string = '10.2.0.0/16'
 param vnetFirewallSubnetAddressPrefix string = '10.241.130.0/26'
+
+param serviceEndpoints array = []
+
 var firewallIP = '10.241.130.4' // always .4
 
-var create_vnet = custom_vnet || azureFirewalls
+var create_vnet = custom_vnet || azureFirewalls || !empty(serviceEndpoints)
 
 var vnetName = '${resourceName}-vnet'
 
@@ -101,6 +105,7 @@ var aks_subnet = azureFirewalls ? {
   name: aks_subnet_name
   properties: {
     addressPrefix: vnetAksSubnetAddressPrefix
+    serviceEndpoints: serviceEndpoints
   }
 }
 
@@ -126,7 +131,8 @@ resource aks_vnet_cont 'Microsoft.Network/virtualNetworks/subnets/providers/role
   properties: {
     roleDefinitionId: networkContributorRole
     principalId: user_identity ? uai.properties.principalId : null
-    scope: '${vnet.id}/subnets/${aks_subnet_name}'
+    principalType: 'ServicePrincipal'
+    //scope: '${vnet.id}/subnets/${aks_subnet_name}'
   }
 }
 
@@ -401,7 +407,7 @@ var addon_monitoring = {
   }
 }
 
-param authorizedIPRanges string = ''
+param authorizedIPRanges array = []
 param enablePrivateCluster bool = false
 
 var aks_properties = {
@@ -414,9 +420,7 @@ var aks_properties = {
     tenantID: aad_tenant_id
   } : null
   apiServerAccessProfile: !empty(authorizedIPRanges) ? {
-    authorizedIPRanges: [
-      authorizedIPRanges
-    ]
+    authorizedIPRanges: authorizedIPRanges
   } : {
     enablePrivateCluster: enablePrivateCluster
   }
