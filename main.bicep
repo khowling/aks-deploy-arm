@@ -20,9 +20,6 @@ param podCidr string = '10.244.0.0/16'
 param serviceCidr string = '10.0.0.0/16'
 param dnsServiceIP string = '10.0.0.10'
 param dockerBridgeCidr string = '172.17.0.1/16'
-//param serverFarmId string = resourceId('Microsoft.Web/sites', 'myWebsite')
-
-var workspaceName = '${resourceName}-workspace'
 
 //---------------------------------------------------------------------------------- User Identity
 var user_identity = create_vnet
@@ -45,12 +42,24 @@ resource acr 'Microsoft.ContainerRegistry/registries@2017-10-01' = if (!empty(re
 }
 
 var AcrPullRole = resourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
+/*
 resource aks_acr_pull 'Microsoft.ContainerRegistry/registries/providers/roleAssignments@2017-05-01' = if (!empty(registries_sku)) {
   name: '${acrName}/Microsoft.Authorization/${guid(resourceGroup().id, acrName)}'
   properties: {
     roleDefinitionId: AcrPullRole
     principalId: aks.properties.identityProfile.kubeletidentity.objectId
     principalType: 'ServicePrincipal'
+  }
+}
+*/
+// New way of setting scope https://docs.microsoft.com/en-us/azure/azure-resource-manager/templates/scope-extension-resources
+resource aks_acr_pull 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = if (!empty(registries_sku)) {
+  scope: acr // Use when specifying a scope that is different than the deployment scope
+  name: guid(resourceGroup().id, acrName)
+  properties: {
+    roleDefinitionId: AcrPullRole
+    principalType: 'ServicePrincipal'
+    principalId: aks.properties.identityProfile.kubeletidentity.objectId
   }
 }
 
@@ -75,7 +84,7 @@ var vnetName = '${resourceName}-vnet'
 //    addressPrefix: vnetInternalLBSubnetAddressPrefix
 //  }
 //}
-var appgw_subnet_name = '${appgw_name}-subnet'
+var appgw_subnet_name = 'appgw-sn'
 var appgw_subnet = {
   name: appgw_subnet_name
   properties: {
@@ -92,7 +101,7 @@ var fw_subnet = {
 
 param azureFirewalls bool = false
 
-var aks_subnet_name = 'aks-subnet'
+var aks_subnet_name = 'aks-sn'
 var aks_subnet = azureFirewalls ? {
   name: aks_subnet_name
   properties: {
@@ -137,7 +146,7 @@ resource aks_vnet_cont 'Microsoft.Network/virtualNetworks/subnets/providers/role
 }
 
 //---------------------------------------------------------------------------------- Firewall
-var routeFwTableName = '${resourceName}-route-fw'
+var routeFwTableName = '${resourceName}-fw-udr'
 resource vnet_udr 'Microsoft.Network/routeTables@2019-04-01' = if (azureFirewalls) {
   name: routeFwTableName
   location: location
@@ -387,17 +396,38 @@ var autoScaleProfile = {
   maxCount: autoScale ? agentCountMax : null
 }
 
-var addon_agic = {
+var addon_agic = create_vnet ? {
   ingressApplicationGateway: {
     enabled: true
     config: {
       applicationGatewayName: appgw_name
-      subnetCIDR: !create_vnet ? vnetAppGatewaySubnetAddressPrefix : null
       // 121011521000988: This doesn't work, bug : "code":"InvalidTemplateDeployment", IngressApplicationGateway addon cannot find subnet
-      subnetID: create_vnet ? '${vnet.id}/subnets/${appgw_subnet_name}' : null
+      subnetID: '${vnet.id}/subnets/${appgw_subnet_name}'
+    }
+  }
+} : {
+  ingressApplicationGateway: {
+    enabled: true
+    config: {
+      applicationGatewayName: appgw_name
+      subnetCIDR: vnetAppGatewaySubnetAddressPrefix
     }
   }
 }
+
+param gitops string = ''
+var addon_gitops = {
+  gitops: {
+    //    config": null,
+    enabled: true
+    //    identity: {
+    //      clientId: 'e891dad0-7092-4e30-8ba8-c4dffb2f3584',
+    //      objectId: '4b4ea88a-a8ed-469f-a009-c2d13b799265',
+    //      resourceId: '/subscriptions/95efa97a-9b5d-4f74-9f75-a3396e23344d/resourcegroups/MC_kh-default-rg_kh-default_westeurope/providers/Microsoft.ManagedIdentity/userAssignedIdentities/gitops-kh-default'
+    //    }
+  }
+}
+
 var addon_monitoring = {
   omsagent: {
     enabled: true
@@ -453,6 +483,20 @@ resource aks 'Microsoft.ContainerService/managedClusters@2020-12-01' = {
   properties: aks_properties2
   identity: user_identity ? aks_identity_user : aks_identity_system
 }
+
+// for AAD Integrated Cluster wusing 'enableAzureRBAC', add Cluster admin to the current user!
+var buildInAKSRBACClusterAdmin = resourceId('Microsoft.Authorization/roleDefinitions', 'b1ff04bb-8a4e-4dc4-8eb5-8693973ce19b')
+resource aks_admin_role_assignment 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = if (enableAzureRBAC && false) {
+  scope: aks // Use when specifying a scope that is different than the deployment scope
+  name: guid(resourceGroup().id, 'aks_admin_role_assignment')
+  properties: {
+    roleDefinitionId: buildInAKSRBACClusterAdmin
+    principalType: 'User'
+    principalId: 'Struggling to get current user Id'
+  }
+}
+
+//---------------------------------------------------------------------------------- gitops (to apply the post-helm packages to the cluster)
 
 //---------------------------------------------------------------------------------- Container Insights
 

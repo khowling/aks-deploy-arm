@@ -125,6 +125,10 @@
       "type": "string",
       "defaultValue": ""
     },
+    "gitops": {
+      "type": "string",
+      "defaultValue": ""
+    },
     "authorizedIPRanges": {
       "type": "array",
       "defaultValue": []
@@ -140,7 +144,6 @@
   },
   "functions": [],
   "variables": {
-    "workspaceName": "[format('{0}-workspace', parameters('resourceName'))]",
     "user_identity": "[variables('create_vnet')]",
     "user_identity_name": "[format('{0}uai', parameters('resourceName'))]",
     "acrName": "[format('{0}acr', replace(parameters('resourceName'), '-', ''))]",
@@ -148,7 +151,7 @@
     "firewallIP": "10.241.130.4",
     "create_vnet": "[or(or(parameters('custom_vnet'), parameters('azureFirewalls')), not(empty(parameters('serviceEndpoints'))))]",
     "vnetName": "[format('{0}-vnet', parameters('resourceName'))]",
-    "appgw_subnet_name": "[format('{0}-subnet', variables('appgw_name'))]",
+    "appgw_subnet_name": "appgw-sn",
     "appgw_subnet": {
       "name": "[variables('appgw_subnet_name')]",
       "properties": {
@@ -162,12 +165,12 @@
         "addressPrefix": "[parameters('vnetFirewallSubnetAddressPrefix')]"
       }
     },
-    "aks_subnet_name": "aks-subnet",
+    "aks_subnet_name": "aks-sn",
     "aks_subnet": "[if(parameters('azureFirewalls'), createObject('name', variables('aks_subnet_name'), 'properties', createObject('addressPrefix', parameters('vnetAksSubnetAddressPrefix'), 'routeTable', createObject('id', resourceId('Microsoft.Network/routeTables', variables('routeFwTableName'))))), createObject('name', variables('aks_subnet_name'), 'properties', createObject('addressPrefix', parameters('vnetAksSubnetAddressPrefix'), 'serviceEndpoints', parameters('serviceEndpoints'))))]",
     "subnets_1": "[if(parameters('azureFirewalls'), concat(array(variables('aks_subnet')), array(variables('fw_subnet'))), array(variables('aks_subnet')))]",
     "final_subnets": "[if(parameters('ingressApplicationGateway'), concat(array(variables('subnets_1')), array(variables('appgw_subnet'))), array(variables('subnets_1')))]",
     "networkContributorRole": "[resourceId('Microsoft.Authorization/roleDefinitions', '4d97b98b-1d4f-4787-a291-c67834d212e7')]",
-    "routeFwTableName": "[format('{0}-route-fw', parameters('resourceName'))]",
+    "routeFwTableName": "[format('{0}-fw-udr', parameters('resourceName'))]",
     "firewallPublicIpName": "[format('{0}-fw-ip', parameters('resourceName'))]",
     "fw_name": "[format('{0}-fw', parameters('resourceName'))]",
     "appgw_name": "[format('{0}-appgw', parameters('resourceName'))]",
@@ -198,14 +201,10 @@
       "minCount": "[if(variables('autoScale'), parameters('agentCount'), null())]",
       "maxCount": "[if(variables('autoScale'), parameters('agentCountMax'), null())]"
     },
-    "addon_agic": {
-      "ingressApplicationGateway": {
-        "enabled": true,
-        "config": {
-          "applicationGatewayName": "[variables('appgw_name')]",
-          "subnetCIDR": "[if(not(variables('create_vnet')), parameters('vnetAppGatewaySubnetAddressPrefix'), null())]",
-          "subnetID": "[if(variables('create_vnet'), format('{0}/subnets/{1}', resourceId('Microsoft.Network/virtualNetworks', variables('vnetName')), variables('appgw_subnet_name')), null())]"
-        }
+    "addon_agic": "[if(variables('create_vnet'), createObject('ingressApplicationGateway', createObject('enabled', true(), 'config', createObject('applicationGatewayName', variables('appgw_name'), 'subnetID', format('{0}/subnets/{1}', resourceId('Microsoft.Network/virtualNetworks', variables('vnetName')), variables('appgw_subnet_name'))))), createObject('ingressApplicationGateway', createObject('enabled', true(), 'config', createObject('applicationGatewayName', variables('appgw_name'), 'subnetCIDR', parameters('vnetAppGatewaySubnetAddressPrefix')))))]",
+    "addon_gitops": {
+      "gitops": {
+        "enabled": true
       }
     },
     "addon_monitoring": {
@@ -235,6 +234,7 @@
     },
     "aks_properties1": "[if(empty(parameters('upgradeChannel')), variables('aks_properties'), union(variables('aks_properties'), createObject('autoUpgradeProfile', createObject('upgradeChannel', parameters('upgradeChannel')))))]",
     "aks_properties2": "[if(or(parameters('ingressApplicationGateway'), parameters('omsagent')), union(variables('aks_properties1'), createObject('addonProfiles', if(and(parameters('ingressApplicationGateway'), parameters('omsagent')), union(variables('addon_monitoring'), variables('addon_agic')), if(parameters('omsagent'), variables('addon_monitoring'), variables('addon_agic'))))), variables('aks_properties1'))]",
+    "buildInAKSRBACClusterAdmin": "[resourceId('Microsoft.Authorization/roleDefinitions', 'b1ff04bb-8a4e-4dc4-8eb5-8693973ce19b')]",
     "aks_law_name": "[format('{0}-workspace', parameters('resourceName'))]"
   },
   "resources": [
@@ -257,15 +257,17 @@
     },
     {
       "condition": "[not(empty(parameters('registries_sku')))]",
-      "type": "Microsoft.ContainerRegistry/registries/providers/roleAssignments",
-      "apiVersion": "2017-05-01",
-      "name": "[format('{0}/Microsoft.Authorization/{1}', variables('acrName'), guid(resourceGroup().id, variables('acrName')))]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2020-04-01-preview",
+      "scope": "[format('Microsoft.ContainerRegistry/registries/{0}', variables('acrName'))]",
+      "name": "[guid(resourceGroup().id, variables('acrName'))]",
       "properties": {
         "roleDefinitionId": "[variables('AcrPullRole')]",
-        "principalId": "[reference(resourceId('Microsoft.ContainerService/managedClusters', parameters('resourceName'))).identityProfile.kubeletidentity.objectId]",
-        "principalType": "ServicePrincipal"
+        "principalType": "ServicePrincipal",
+        "principalId": "[reference(resourceId('Microsoft.ContainerService/managedClusters', parameters('resourceName'))).identityProfile.kubeletidentity.objectId]"
       },
       "dependsOn": [
+        "[resourceId('Microsoft.ContainerRegistry/registries', variables('acrName'))]",
         "[resourceId('Microsoft.ContainerService/managedClusters', parameters('resourceName'))]"
       ]
     },
@@ -531,6 +533,21 @@
         "[resourceId('Microsoft.OperationalInsights/workspaces', variables('aks_law_name'))]",
         "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('user_identity_name'))]",
         "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+      ]
+    },
+    {
+      "condition": "[and(parameters('enableAzureRBAC'), false())]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2020-04-01-preview",
+      "scope": "[format('Microsoft.ContainerService/managedClusters/{0}', parameters('resourceName'))]",
+      "name": "[guid(resourceGroup().id, 'aks_admin_role_assignment')]",
+      "properties": {
+        "roleDefinitionId": "[variables('buildInAKSRBACClusterAdmin')]",
+        "principalType": "User",
+        "principalId": "Struggling to get current user Id"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ContainerService/managedClusters', parameters('resourceName'))]"
       ]
     },
     {
