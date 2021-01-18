@@ -1,25 +1,5 @@
 param location string = resourceGroup().location
 param resourceName string
-param dnsPrefix string = '${resourceName}-dns'
-param kubernetesVersion string = '1.19.3'
-param enable_aad bool = false
-param aad_tenant_id string = ''
-param omsagent bool = false
-param privateCluster bool = false
-param custom_vnet bool = false
-param osDiskType string = 'Epthemeral'
-param agentVMSize string = 'Standard_DS2_v2'
-param osDiskSizeGB int = 0
-param agentCount int = 3
-param agentCountMax int = 0
-param maxPods int = 30
-param networkPlugin string = 'azure'
-param networkPolicy string = ''
-
-param podCidr string = '10.244.0.0/16'
-param serviceCidr string = '10.0.0.0/16'
-param dnsServiceIP string = '10.0.0.10'
-param dockerBridgeCidr string = '172.17.0.1/16'
 
 //---------------------------------------------------------------------------------- User Identity
 var user_identity = create_vnet
@@ -32,6 +12,7 @@ resource uai 'Microsoft.ManagedIdentity/userAssignedIdentities@2018-11-30' = if 
 
 //---------------------------------------------------------------------------------- ACR
 param registries_sku string = ''
+param ACRserviceEndpointFW string = '' // either IP, or 'vnetonly'
 var acrName = '${replace(resourceName, '-', '')}acr'
 resource acr 'Microsoft.ContainerRegistry/registries@2017-10-01' = if (!empty(registries_sku)) {
   name: acrName
@@ -39,6 +20,23 @@ resource acr 'Microsoft.ContainerRegistry/registries@2017-10-01' = if (!empty(re
   sku: {
     name: registries_sku
   }
+  properties: !empty(ACRserviceEndpointFW) ? {
+    networkRuleSet: {
+      defaultAction: 'Deny'
+      virtualNetworkRules: [
+        {
+          action: 'Allow'
+          id: '${vnet.id}/subnets/${aks_subnet_name}'
+        }
+      ]
+      ipRules: ACRserviceEndpointFW != 'vnetonly' ? [
+        {
+          action: 'Allow'
+          value: ACRserviceEndpointFW
+        }
+      ] : null
+    }
+  } : {}
 }
 
 var AcrPullRole = resourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
@@ -64,6 +62,7 @@ resource aks_acr_pull 'Microsoft.Authorization/roleAssignments@2020-04-01-previe
 }
 
 //---------------------------------------------------------------------------------- VNET
+param custom_vnet bool = false
 param vnetAddressPrefix string = '10.0.0.0/8'
 param vnetAksSubnetAddressPrefix string = '10.240.0.0/16'
 //param vnetInternalLBSubnetAddressPrefix string = '10.241.128.0/24'
@@ -361,21 +360,33 @@ resource fw 'Microsoft.Network/azureFirewalls@2019-04-01' = if (azureFirewalls) 
 }
 
 //---------------------------------------------------------------------------------- AKS
+param dnsPrefix string = '${resourceName}-dns'
+param kubernetesVersion string = '1.19.3'
+param enable_aad bool = false
+param aad_tenant_id string = ''
+param omsagent bool = false
+param privateCluster bool = false
 param ingressApplicationGateway bool = false
 param enableAzureRBAC bool = false
 param upgradeChannel string = ''
+param osDiskType string = 'Epthemeral'
+param agentVMSize string = 'Standard_DS2_v2'
+param osDiskSizeGB int = 0
+param agentCount int = 3
+param agentCountMax int = 0
+param maxPods int = 30
+param networkPlugin string = 'azure'
+param networkPolicy string = ''
+param gitops string = ''
+param authorizedIPRanges array = []
+param enablePrivateCluster bool = false
+
+param podCidr string = '10.244.0.0/16'
+param serviceCidr string = '10.0.0.0/16'
+param dnsServiceIP string = '10.0.0.10'
+param dockerBridgeCidr string = '172.17.0.1/16'
 
 var appgw_name = '${resourceName}-appgw'
-
-var aks_identity_user = {
-  type: 'UserAssigned'
-  userAssignedIdentities: {
-    '${uai.id}': {}
-  }
-}
-var aks_identity_system = {
-  type: 'SystemAssigned'
-}
 
 var autoScale = agentCountMax > agentCount
 var agentPoolProfiles = {
@@ -391,12 +402,44 @@ var agentPoolProfiles = {
   type: 'VirtualMachineScaleSets'
   enableAutoScaling: autoScale
 }
-var autoScaleProfile = {
-  minCount: autoScale ? agentCount : null
-  maxCount: autoScale ? agentCountMax : null
+
+var aks_properties_base = {
+  kubernetesVersion: kubernetesVersion
+  enableRBAC: true
+  dnsPrefix: dnsPrefix
+  aadProfile: enable_aad ? {
+    managed: true
+    enableAzureRBAC: enableAzureRBAC
+    tenantID: aad_tenant_id
+  } : null
+  apiServerAccessProfile: !empty(authorizedIPRanges) ? {
+    authorizedIPRanges: authorizedIPRanges
+  } : {
+    enablePrivateCluster: enablePrivateCluster
+  }
+  agentPoolProfiles: autoScale ? array(union(agentPoolProfiles, {
+    minCount: agentCount
+    maxCount: agentCountMax
+  })) : array(agentPoolProfiles)
+  networkProfile: {
+    loadBalancerSku: 'standard'
+    networkPlugin: networkPlugin
+    networkPolicy: networkPolicy
+    podCidr: podCidr
+    serviceCidr: serviceCidr
+    dnsServiceIP: dnsServiceIP
+    dockerBridgeCidr: dockerBridgeCidr
+  }
 }
 
-var addon_agic = create_vnet ? {
+var aks_properties1 = !empty(upgradeChannel) ? union(aks_properties_base, {
+  autoUpgradeProfile: {
+    upgradeChannel: upgradeChannel
+  }
+}) : aks_properties_base
+
+var aks_addons = {}
+var aks_addons1 = ingressApplicationGateway ? union(aks_addons, create_vnet ? {
   ingressApplicationGateway: {
     enabled: true
     config: {
@@ -413,75 +456,47 @@ var addon_agic = create_vnet ? {
       subnetCIDR: vnetAppGatewaySubnetAddressPrefix
     }
   }
-}
+}) : aks_addons
 
-param gitops string = ''
-var addon_gitops = {
-  gitops: {
-    //    config": null,
-    enabled: true
-    //    identity: {
-    //      clientId: 'e891dad0-7092-4e30-8ba8-c4dffb2f3584',
-    //      objectId: '4b4ea88a-a8ed-469f-a009-c2d13b799265',
-    //      resourceId: '/subscriptions/95efa97a-9b5d-4f74-9f75-a3396e23344d/resourcegroups/MC_kh-default-rg_kh-default_westeurope/providers/Microsoft.ManagedIdentity/userAssignedIdentities/gitops-kh-default'
-    //    }
-  }
-}
-
-var addon_monitoring = {
+var aks_addons2 = omsagent ? union(aks_addons1, {
   omsagent: {
     enabled: true
     config: {
       logAnalyticsWorkspaceResourceID: aks_law.id
     }
   }
-}
+}) : aks_addons1
 
-param authorizedIPRanges array = []
-param enablePrivateCluster bool = false
+var aks_addons3 = !empty(gitops) ? union(aks_addons2, {
+  gitops: {
+    //    config": null,
+    enabled: true
+    //    identity: {
+    //      clientId: 'xxx',
+    //      objectId: 'xxx',
+    //      resourceId: '/subscriptions/95efa97a-9b5d-4f74-9f75-a3396e23344d/resourcegroups/xxx/providers/Microsoft.ManagedIdentity/userAssignedIdentities/xxx'
+    //    }
+  }
+}) : aks_addons2
 
-var aks_properties = {
-  kubernetesVersion: kubernetesVersion
-  enableRBAC: true
-  dnsPrefix: dnsPrefix
-  aadProfile: enable_aad ? {
-    managed: true
-    enableAzureRBAC: enableAzureRBAC
-    tenantID: aad_tenant_id
-  } : null
-  apiServerAccessProfile: !empty(authorizedIPRanges) ? {
-    authorizedIPRanges: authorizedIPRanges
-  } : {
-    enablePrivateCluster: enablePrivateCluster
-  }
-  agentPoolProfiles: autoScale ? array(union(agentPoolProfiles, autoScaleProfile)) : array(agentPoolProfiles)
-  networkProfile: {
-    loadBalancerSku: 'standard'
-    networkPlugin: networkPlugin
-    networkPolicy: networkPolicy
-    podCidr: podCidr
-    serviceCidr: serviceCidr
-    dnsServiceIP: dnsServiceIP
-    dockerBridgeCidr: dockerBridgeCidr
-  }
-}
-
-var aks_properties1 = empty(upgradeChannel) ? aks_properties : union(aks_properties, {
-  autoUpgradeProfile: {
-    upgradeChannel: upgradeChannel
-  }
-})
-var aks_properties2 = ingressApplicationGateway || omsagent ? union(aks_properties1, {
-  addonProfiles: ingressApplicationGateway && omsagent ? union(addon_monitoring, addon_agic) : omsagent ? addon_monitoring : addon_agic
+var aks_properties2 = !empty(aks_addons3) ? union(aks_properties1, {
+  addonProfiles: aks_addons3
 }) : aks_properties1
 
-//var aks_addonProfiles = ingressApplicationGateway && omsagent ? union(addon_monitoring, addon_agic) : omsagent ? addon_monitoring : ingressApplicationGateway ? addon_agic : null
+var aks_identity_user = {
+  type: 'UserAssigned'
+  userAssignedIdentities: {
+    '${uai.id}': {}
+  }
+}
 
 resource aks 'Microsoft.ContainerService/managedClusters@2020-12-01' = {
   name: resourceName
   location: location
   properties: aks_properties2
-  identity: user_identity ? aks_identity_user : aks_identity_system
+  identity: user_identity ? aks_identity_user : {
+    type: 'SystemAssigned'
+  }
 }
 
 // for AAD Integrated Cluster wusing 'enableAzureRBAC', add Cluster admin to the current user!
@@ -497,6 +512,14 @@ resource aks_admin_role_assignment 'Microsoft.Authorization/roleAssignments@2020
 }
 
 //---------------------------------------------------------------------------------- gitops (to apply the post-helm packages to the cluster)
+// WAITING FOR PUBLIC PREVIEW
+// https://docs.microsoft.com/en-gb/azure/azure-arc/kubernetes/use-gitops-connected-cluster#using-azure-cli
+/*
+resource gitops 'Microsoft.KubernetesConfiguration/sourceControlConfigurations@2019-11-01-preview' = if (false) {
+  name: 'bla'
+  location: 'bla'
+}
+*/
 
 //---------------------------------------------------------------------------------- Container Insights
 
@@ -510,9 +533,8 @@ resource aks_law 'Microsoft.OperationalInsights/workspaces@2020-08-01' = if (oms
   }
 }
 
-/* output!
------- cluster
-available properties are 
+/* ------ NOTES 
+output of AKS - runtime -- properties of created resources (aks.properties.<>) (instead of ARM function reference(...) )
   provisioningState, 
   powerState, 
   kubernetesVersion, 
@@ -531,36 +553,10 @@ available properties are
   identityProfile.
   autoScalerProfile
 
-
-
-
-"identity": {
-  "principalId": "a4b92d4f-fc2c-4a3d-bdee-ad167a609955",
-  "tenantId": "72f988bf-86f1-41af-91ab-2d7cd011db47",
-  "type": "SystemAssigned",
-  "userAssignedIdentities": null
-},
------- kubelet
-"identityProfile": {
-  "kubeletidentity": {
-    "clientId": "81b7b442-dc3a-4d69-a7fe-ca176c7bba70",
-    "objectId": "aba6d50f-5f80-40e9-948c-cd3d86c87984",
-    "resourceId": "/subscriptions/95efa97a-9b5d-4f74-9f75-a3396e23344d/resourcegroups/MC_myResourceGroup_myCluster_westeurope/providers/Microsoft.ManagedIdentity/userAssignedIdentities/myCluster-agentpool"
-  }
-
+ 
+compipetime --- Instead of using the resourceId(), .ids will compile to [resourceId('Microsoft.Storage/storageAccounts', parameters('name'))]
+  output blobid string = aks.id
+  output blobid string = aks.name
+  output blobid string = aks.apiVersion
+  output blobid string = aks.type
 */
-
-// runtime -- properties of created resources
-
-// we will automatically add the 'dependsOn' property.
-
-// compipetime --- Instead of using the resourceId(), this will compile to [resourceId('Microsoft.Storage/storageAccounts', parameters('name'))]
-//output blobid string = stg.id
-//output blobid string = stg.name
-//output blobid string = stg.apiVersion
-//output blobid string = stg.type
-
-// runtime -- properties of created resources - replacement for reference(...).*
-//output blobEndpoint string = stg.properties.primaryEndpoints.blob
-
-//output makeCapital string = toUpper('all lowercase')

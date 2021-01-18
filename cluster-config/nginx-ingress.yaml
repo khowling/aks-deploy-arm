@@ -1,0 +1,12 @@
+apiVersion: helm.fluxcd.io/v1
+kind: HelmRelease
+metadata:
+  name: nginx-ingress
+spec:
+  releaseName: gitops-nginx-ingress
+  chart:
+    git: https://github.com/kubernetes/ingress-nginx
+    ref: master
+    path: charts/ingress-nginx
+  values:
+    controller.publishService.enabled: true
