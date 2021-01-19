@@ -113,6 +113,10 @@
       "type": "string",
       "defaultValue": ""
     },
+    "azurepolicy": {
+      "type": "string",
+      "defaultValue": ""
+    },
     "gitops": {
       "type": "string",
       "defaultValue": ""
@@ -140,6 +144,10 @@
     "dockerBridgeCidr": {
       "type": "string",
       "defaultValue": "172.17.0.1/16"
+    },
+    "adminprincipleid": {
+      "type": "string",
+      "defaultValue": ""
     },
     "retentionInDays": {
       "type": "int",
@@ -214,13 +222,15 @@
     "aks_addons1": "[if(parameters('ingressApplicationGateway'), union(variables('aks_addons'), if(variables('create_vnet'), createObject('ingressApplicationGateway', createObject('enabled', true(), 'config', createObject('applicationGatewayName', variables('appgw_name'), 'subnetID', format('{0}/subnets/{1}', resourceId('Microsoft.Network/virtualNetworks', variables('vnetName')), variables('appgw_subnet_name'))))), createObject('ingressApplicationGateway', createObject('enabled', true(), 'config', createObject('applicationGatewayName', variables('appgw_name'), 'subnetCIDR', parameters('vnetAppGatewaySubnetAddressPrefix')))))), variables('aks_addons'))]",
     "aks_addons2": "[if(parameters('omsagent'), union(variables('aks_addons1'), createObject('omsagent', createObject('enabled', true(), 'config', createObject('logAnalyticsWorkspaceResourceID', resourceId('Microsoft.OperationalInsights/workspaces', variables('aks_law_name')))))), variables('aks_addons1'))]",
     "aks_addons3": "[if(not(empty(parameters('gitops'))), union(variables('aks_addons2'), createObject('gitops', createObject('enabled', true()))), variables('aks_addons2'))]",
-    "aks_properties2": "[if(not(empty(variables('aks_addons3'))), union(variables('aks_properties1'), createObject('addonProfiles', variables('aks_addons3'))), variables('aks_properties1'))]",
+    "aks_addons4": "[if(not(empty(parameters('azurepolicy'))), union(variables('aks_addons3'), createObject('azurepolicy', createObject('config', createObject('version', 'v2'), 'enabled', true()))), variables('aks_addons3'))]",
+    "aks_properties2": "[if(not(empty(variables('aks_addons4'))), union(variables('aks_properties1'), createObject('addonProfiles', variables('aks_addons4'))), variables('aks_properties1'))]",
     "aks_identity_user": {
       "type": "UserAssigned",
       "userAssignedIdentities": {
         "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('user_identity_name'))]": {}
       }
     },
+    "policySetPodSecBaseline": "[resourceId('Microsoft.Authorization/policySetDefinitions', 'a8640138-9b0a-4a28-b8cb-1666c838647d')]",
     "buildInAKSRBACClusterAdmin": "[resourceId('Microsoft.Authorization/roleDefinitions', 'b1ff04bb-8a4e-4dc4-8eb5-8693973ce19b')]",
     "aks_law_name": "[format('{0}-workspace', parameters('resourceName'))]"
   },
@@ -527,7 +537,23 @@
       ]
     },
     {
-      "condition": "[and(parameters('enableAzureRBAC'), false())]",
+      "condition": "[not(empty(parameters('azurepolicy')))]",
+      "type": "Microsoft.Authorization/policyAssignments",
+      "apiVersion": "2019-09-01",
+      "name": "[format('{0}-baseline', parameters('resourceName'))]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "scope": "[resourceGroup().id]",
+        "policyDefinitionId": "[variables('policySetPodSecBaseline')]",
+        "parameters": {
+          "effect": {
+            "value": "[parameters('azurepolicy')]"
+          }
+        }
+      }
+    },
+    {
+      "condition": "[and(parameters('enableAzureRBAC'), not(empty(parameters('adminprincipleid'))))]",
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2020-04-01-preview",
       "scope": "[format('Microsoft.ContainerService/managedClusters/{0}', parameters('resourceName'))]",
@@ -535,7 +561,7 @@
       "properties": {
         "roleDefinitionId": "[variables('buildInAKSRBACClusterAdmin')]",
         "principalType": "User",
-        "principalId": "Struggling to get current user Id"
+        "principalId": "[parameters('adminprincipleid')]"
       },
       "dependsOn": [
         "[resourceId('Microsoft.ContainerService/managedClusters', parameters('resourceName'))]"

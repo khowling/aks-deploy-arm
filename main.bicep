@@ -377,6 +377,7 @@ param agentCountMax int = 0
 param maxPods int = 30
 param networkPlugin string = 'azure'
 param networkPolicy string = ''
+param azurepolicy string = ''
 param gitops string = ''
 param authorizedIPRanges array = []
 param enablePrivateCluster bool = false
@@ -479,8 +480,17 @@ var aks_addons3 = !empty(gitops) ? union(aks_addons2, {
   }
 }) : aks_addons2
 
-var aks_properties2 = !empty(aks_addons3) ? union(aks_properties1, {
-  addonProfiles: aks_addons3
+var aks_addons4 = !empty(azurepolicy) ? union(aks_addons3, {
+  azurepolicy: {
+    config: {
+      version: 'v2'
+    }
+    enabled: true
+  }
+}) : aks_addons3
+
+var aks_properties2 = !empty(aks_addons4) ? union(aks_properties1, {
+  addonProfiles: aks_addons4
 }) : aks_properties1
 
 var aks_identity_user = {
@@ -499,15 +509,34 @@ resource aks 'Microsoft.ContainerService/managedClusters@2020-12-01' = {
   }
 }
 
+// https://github.com/Azure/azure-policy/blob/master/built-in-policies/policySetDefinitions/Kubernetes/Kubernetes_PSPBaselineStandard.json
+var policySetPodSecBaseline = resourceId('Microsoft.Authorization/policySetDefinitions', 'a8640138-9b0a-4a28-b8cb-1666c838647d')
+resource aks_policies 'Microsoft.Authorization/policyAssignments@2019-09-01' = if (!empty(azurepolicy)) {
+  name: '${resourceName}-baseline'
+  location: location
+  properties: {
+    scope: resourceGroup().id
+    policyDefinitionId: policySetPodSecBaseline
+    parameters: {
+      // Gives error: "The request content was invalid and could not be deserialized"
+      //excludedNamespaces: '[  "kube-system",  "gatekeeper-system",  "azure-arc"]'
+      effect: {
+        value: azurepolicy
+      }
+    }
+  }
+}
+
+param adminprincipleid string = ''
 // for AAD Integrated Cluster wusing 'enableAzureRBAC', add Cluster admin to the current user!
 var buildInAKSRBACClusterAdmin = resourceId('Microsoft.Authorization/roleDefinitions', 'b1ff04bb-8a4e-4dc4-8eb5-8693973ce19b')
-resource aks_admin_role_assignment 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = if (enableAzureRBAC && false) {
+resource aks_admin_role_assignment 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = if (enableAzureRBAC && !empty(adminprincipleid)) {
   scope: aks // Use when specifying a scope that is different than the deployment scope
   name: guid(resourceGroup().id, 'aks_admin_role_assignment')
   properties: {
     roleDefinitionId: buildInAKSRBACClusterAdmin
     principalType: 'User'
-    principalId: 'Struggling to get current user Id'
+    principalId: adminprincipleid
   }
 }
 
