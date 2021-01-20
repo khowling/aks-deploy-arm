@@ -9,6 +9,10 @@
     "resourceName": {
       "type": "string"
     },
+    "dnsZoneId": {
+      "type": "string",
+      "defaultValue": ""
+    },
     "registries_sku": {
       "type": "string",
       "defaultValue": ""
@@ -158,6 +162,7 @@
   "variables": {
     "user_identity": "[variables('create_vnet')]",
     "user_identity_name": "[format('{0}uai', parameters('resourceName'))]",
+    "DNSZoneContributor": "[resourceId('Microsoft.Authorization/roleDefinitions', 'befefa01-2a29-4197-83a8-272ff33ce314')]",
     "acrName": "[format('{0}acr', replace(parameters('resourceName'), '-', ''))]",
     "AcrPullRole": "[resourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')]",
     "firewallIP": "10.241.130.4",

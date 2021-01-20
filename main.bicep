@@ -10,6 +10,24 @@ resource uai 'Microsoft.ManagedIdentity/userAssignedIdentities@2018-11-30' = if 
   location: location
 }
 
+// ------------------------------------------------------- If DNS Zone
+// will be solved with 'existing' https://github.com/Azure/bicep/issues/258
+
+param dnsZoneId string = ''
+
+var DNSZoneContributor = resourceId('Microsoft.Authorization/roleDefinitions', 'befefa01-2a29-4197-83a8-272ff33ce314')
+/*
+resource dns_zone_cont 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = if (user_identity && !empty(dnsZoneId)) {
+  scope: dnsZoneId
+  name: guid(resourceGroup().id, 'dnszone')
+  properties: {
+    roleDefinitionId: DNSZoneContributor
+    principalId: user_identity ? uai.properties.principalId : null
+    principalType: 'ServicePrincipal'
+  }
+}
+*/
+
 //---------------------------------------------------------------------------------- ACR
 param registries_sku string = ''
 param ACRserviceEndpointFW string = '' // either IP, or 'vnetonly'
