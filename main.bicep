@@ -22,10 +22,11 @@ resource dns_zone_cont 'Microsoft.Authorization/roleAssignments@2020-04-01-previ
   name: guid(resourceGroup().id, 'dnszone')
   properties: {
     roleDefinitionId: DNSZoneContributor
-    principalId: user_identity ? uai.properties.principalId : null
     principalType: 'ServicePrincipal'
+    principalId: aks.properties.identityProfile.kubeletidentity.objectId
   }
 }
+
 */
 
 //---------------------------------------------------------------------------------- ACR
