@@ -14,20 +14,17 @@ resource uai 'Microsoft.ManagedIdentity/userAssignedIdentities@2018-11-30' = if 
 // will be solved with 'existing' https://github.com/Azure/bicep/issues/258
 
 param dnsZoneId string = ''
+var dnsZoneRg = !empty(dnsZoneId) ? split(dnsZoneId, '/')[4] : ''
+var dnsZoneName = !empty(dnsZoneId) ? split(dnsZoneId, '/')[8] : ''
 
-var DNSZoneContributor = resourceId('Microsoft.Authorization/roleDefinitions', 'befefa01-2a29-4197-83a8-272ff33ce314')
-/*
-resource dns_zone_cont 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = if (user_identity && !empty(dnsZoneId)) {
-  scope: dnsZoneId
-  name: guid(resourceGroup().id, 'dnszone')
-  properties: {
-    roleDefinitionId: DNSZoneContributor
-    principalType: 'ServicePrincipal'
+module dnsZone './dnsZone.bicep' = if (user_identity && !empty(dnsZoneId)) {
+  name: 'addDnsContributor'
+  scope: resourceGroup(dnsZoneRg)
+  params: {
+    dnsZoneName: dnsZoneName
     principalId: aks.properties.identityProfile.kubeletidentity.objectId
   }
 }
-
-*/
 
 //---------------------------------------------------------------------------------- ACR
 param registries_sku string = ''
@@ -137,6 +134,8 @@ var aks_subnet = azureFirewalls ? {
 }
 
 var subnets_1 = azureFirewalls ? concat(array(aks_subnet), array(fw_subnet)) : array(aks_subnet)
+
+// DONT create appgw subnet, the addon will create it for us
 var final_subnets = ingressApplicationGateway ? concat(array(subnets_1), array(appgw_subnet)) : array(subnets_1)
 
 resource vnet 'Microsoft.Network/virtualNetworks@2020-07-01' = if (create_vnet) {
@@ -378,9 +377,20 @@ resource fw 'Microsoft.Network/azureFirewalls@2019-04-01' = if (azureFirewalls) 
   }
 }
 
+//---------------------------------------------------------------------------------- AppGateway - Only if Custom VNET, otherwise addon will auto-create
+module appGw './appgw.bicep' = if (create_vnet && ingressApplicationGateway) {
+  name: 'addAppGw'
+  params: {
+    resourceName: resourceName
+    location: location
+    appgw_subnet_name: appgw_subnet_name
+    appgw_subnet_id: '${vnet.id}/subnets/${appgw_subnet_name}'
+  }
+}
+
 //---------------------------------------------------------------------------------- AKS
 param dnsPrefix string = '${resourceName}-dns'
-param kubernetesVersion string = '1.19.3'
+param kubernetesVersion string = '1.19.7'
 param enable_aad bool = false
 param aad_tenant_id string = ''
 param omsagent bool = false
@@ -400,6 +410,7 @@ param azurepolicy string = ''
 param gitops string = ''
 param authorizedIPRanges array = []
 param enablePrivateCluster bool = false
+param availabilityZones array = []
 
 param podCidr string = '10.244.0.0/16'
 param serviceCidr string = '10.0.0.0/16'
@@ -421,6 +432,7 @@ var agentPoolProfiles = {
   maxPods: maxPods
   type: 'VirtualMachineScaleSets'
   enableAutoScaling: autoScale
+  availabilityZones: !empty(availabilityZones) ? availabilityZones : null
 }
 
 var aks_properties_base = {
@@ -460,14 +472,21 @@ var aks_properties1 = !empty(upgradeChannel) ? union(aks_properties_base, {
 
 var aks_addons = {}
 var aks_addons1 = ingressApplicationGateway ? union(aks_addons, create_vnet ? {
+  /*
+  
+  COMMENTED OUT UNTIL addon supports creating Appgw in custom vnet.  Workaround is a follow up az cli command
+
   ingressApplicationGateway: {
-    enabled: true
     config: {
-      applicationGatewayName: appgw_name
+      //applicationGatewayName: appgw_name
       // 121011521000988: This doesn't work, bug : "code":"InvalidTemplateDeployment", IngressApplicationGateway addon cannot find subnet
-      subnetID: '${vnet.id}/subnets/${appgw_subnet_name}'
+      //subnetID: '${vnet.id}/subnets/${appgw_subnet_name}'
+      //subnetCIDR: vnetAppGatewaySubnetAddressPrefix
+      applicationGatewayId: '${appgw.id}'
     }
+    enabled: true
   }
+  */
 } : {
   ingressApplicationGateway: {
     enabled: true
@@ -519,7 +538,7 @@ var aks_identity_user = {
   }
 }
 
-resource aks 'Microsoft.ContainerService/managedClusters@2020-12-01' = {
+resource aks 'Microsoft.ContainerService/managedClusters@2021-02-01' = {
   name: resourceName
   location: location
   properties: aks_properties2
