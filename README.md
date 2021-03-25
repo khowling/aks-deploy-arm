@@ -17,7 +17,7 @@ bicep build ./main.bicep  --outfile build/main.json
 
 ### Click here to select your preffered AKS options, and generate the command line to deploy to Azure:
 
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://khcommon.z6.web.core.windows.net/)
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://khowling.github.io/aks-deploy-wizard/)
 
 
 
