@@ -589,7 +589,7 @@
       }
     },
     {
-      "condition": "[and(variables('user_identity'), not(empty(parameters('dnsZoneId'))))]",
+      "condition": "[not(empty(parameters('dnsZoneId')))]",
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2019-10-01",
       "name": "addDnsContributor",
@@ -801,7 +801,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.3.126.58533",
-      "templateHash": "11300968574398309861"
+      "templateHash": "5619792111827318186"
     }
   }
 }

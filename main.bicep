@@ -17,7 +17,7 @@ param dnsZoneId string = ''
 var dnsZoneRg = !empty(dnsZoneId) ? split(dnsZoneId, '/')[4] : ''
 var dnsZoneName = !empty(dnsZoneId) ? split(dnsZoneId, '/')[8] : ''
 
-module dnsZone './dnsZone.bicep' = if (user_identity && !empty(dnsZoneId)) {
+module dnsZone './dnsZone.bicep' = if (!empty(dnsZoneId)) {
   name: 'addDnsContributor'
   scope: resourceGroup(dnsZoneRg)
   params: {
