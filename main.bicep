@@ -122,7 +122,7 @@ var aks_subnet = azureFirewalls ? {
   properties: {
     addressPrefix: vnetAksSubnetAddressPrefix
     routeTable: {
-      id: resourceId('Microsoft.Network/routeTables', routeFwTableName)
+      id: vnet_udr.id //resourceId('Microsoft.Network/routeTables', routeFwTableName)
     }
   }
 } : {

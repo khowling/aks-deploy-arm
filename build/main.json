@@ -296,7 +296,10 @@
           ]
         },
         "subnets": "[variables('final_subnets')]"
-      }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/routeTables', variables('routeFwTableName'))]"
+      ]
     },
     {
       "condition": "[variables('create_vnet')]",
@@ -801,7 +804,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.3.126.58533",
-      "templateHash": "5619792111827318186"
+      "templateHash": "16730039054199786905"
     }
   }
 }
