@@ -1,6 +1,5 @@
 param resourceName string
 param location string
-param appgw_subnet_name string
 param appgw_subnet_id string
 
 //---------------------------------------------------------------------------------- AppGateway - Only if Custom VNET, otherwise addon will auto-create

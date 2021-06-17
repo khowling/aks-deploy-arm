@@ -85,13 +85,41 @@ param vnetAksSubnetAddressPrefix string = '10.240.0.0/16'
 param vnetAppGatewaySubnetAddressPrefix string = '10.2.0.0/16'
 param vnetFirewallSubnetAddressPrefix string = '10.241.130.0/26'
 
+param byoAKSSubnetId string =''
+var existing_vnet = !empty(byoAKSSubnetId)
+var existingAksVnetRG = !empty(byoAKSSubnetId) ? split(byoAKSSubnetId, '/')[4] : ''
+
+module aksnetcontrib './aksnetcontrib.bicep' = if (existing_vnet && user_identity) {
+  name: 'addAksNetContributor'
+  scope: resourceGroup(existingAksVnetRG)
+  params: {
+    byoAKSSubnetId: byoAKSSubnetId
+    principalId: aks.properties.identityProfile.kubeletidentity.objectId //uai.properties.principalId
+  }
+}
+
+
+param byoAGWSubnetId string = ''
+var existingAGWSubnetName = !empty(byoAGWSubnetId) ? split(byoAGWSubnetId, '/')[10] : ''
+var existingAGWVnetName = !empty(byoAGWSubnetId) ? split(byoAGWSubnetId, '/')[8] : ''
+var existingAGWVnetRG = !empty(byoAGWSubnetId) ? split(byoAGWSubnetId, '/')[4] : ''
+resource existingAgwVnet 'Microsoft.Network/virtualNetworks@2021-02-01' existing =  {
+  name: existingAGWVnetName
+  scope : resourceGroup(existingAGWVnetRG)
+}
+resource existingAGWSubnet 'Microsoft.Network/virtualNetworks/subnets@2020-08-01' existing = {
+  parent: existingAgwVnet
+  name: existingAGWSubnetName
+}
+var existingAGWSubnetAddPrefix=existingAGWSubnet.properties.addressPrefix
+
 param serviceEndpoints array = []
 
 var firewallIP = '10.241.130.4' // always .4
 
 var create_vnet = custom_vnet || azureFirewalls || !empty(serviceEndpoints)
 
-var vnetName = '${resourceName}-vnet'
+param vnetName string = '${resourceName}-vnet'
 
 //var internalLBSubnet = {
 //  name: 'InternalLBSubnet'
@@ -116,7 +144,7 @@ var fw_subnet = {
 
 param azureFirewalls bool = false
 
-var aks_subnet_name = 'aks-sn'
+param aks_subnet_name string = 'aks-sn'
 var aks_subnet = azureFirewalls ? {
   name: aks_subnet_name
   properties: {
@@ -377,20 +405,22 @@ resource fw 'Microsoft.Network/azureFirewalls@2019-04-01' = if (azureFirewalls) 
   }
 }
 
-//---------------------------------------------------------------------------------- AppGateway - Only if Custom VNET, otherwise addon will auto-create
-module appGw './appgw.bicep' = if (create_vnet && ingressApplicationGateway) {
+//---------------------------------------------------------------------------------- AppGateway - Only if Existing/Custom VNET, otherwise addon will auto-create
+var appgwSubnetId = !empty(byoAGWSubnetId) ? byoAGWSubnetId : (create_vnet ? '${vnet.id}/subnets/${appgw_subnet_name}' : '') 
+
+module appGw './appgw.bicep' = if ((create_vnet && ingressApplicationGateway) || (existing_vnet && ingressApplicationGateway) ) {
   name: 'addAppGw'
   params: {
     resourceName: resourceName
     location: location
-    appgw_subnet_name: appgw_subnet_name
-    appgw_subnet_id: '${vnet.id}/subnets/${appgw_subnet_name}'
+    //appgw_subnet_name: !empty(existingAGWSubnetName) ? existingAGWSubnetName : appgw_subnet_name
+    appgw_subnet_id: appgwSubnetId
   }
 }
 
 //---------------------------------------------------------------------------------- AKS
 param dnsPrefix string = '${resourceName}-dns'
-param kubernetesVersion string = '1.19.7'
+param kubernetesVersion string = '1.21.1'
 param enable_aad bool = false
 param aad_tenant_id string = ''
 param omsagent bool = false
@@ -420,6 +450,7 @@ param dockerBridgeCidr string = '172.17.0.1/16'
 var appgw_name = '${resourceName}-appgw'
 
 var autoScale = agentCountMax > agentCount
+var aksSubnetId = existing_vnet ? byoAKSSubnetId : (create_vnet ? '${vnet.id}/subnets/${aks_subnet_name}' : null) 
 var agentPoolProfiles = {
   name: 'nodepool1'
   mode: 'System'
@@ -428,7 +459,7 @@ var agentPoolProfiles = {
   count: agentCount
   vmSize: agentVMSize
   osType: 'Linux'
-  vnetSubnetID: create_vnet ? '${vnet.id}/subnets/${aks_subnet_name}' : null
+  vnetSubnetID: aksSubnetId
   maxPods: maxPods
   type: 'VirtualMachineScaleSets'
   enableAutoScaling: autoScale
@@ -492,7 +523,7 @@ var aks_addons1 = ingressApplicationGateway ? union(aks_addons, create_vnet ? {
     enabled: true
     config: {
       applicationGatewayName: appgw_name
-      subnetCIDR: vnetAppGatewaySubnetAddressPrefix
+      subnetCIDR: !empty(existingAGWSubnetAddPrefix) ? existingAGWSubnetAddPrefix : vnetAppGatewaySubnetAddressPrefix
     }
   }
 }) : aks_addons
