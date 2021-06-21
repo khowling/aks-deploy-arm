@@ -35,7 +35,8 @@ jobs:
           inlineScript: |
             RG='Automation-Actions-AksDeployCI'
             RESNAME='AksByo'
-            az deployment group create -f main.bicep -g $RG -p "AksDeploy-ByoVnet.parameters.json" -p resourceName=$RESNAME --name cideploy
+            DEPNAME='Dep${{ GITHUB_RUN_NUMBER }}'
+            az deployment group create -f main.bicep -g $RG -p "AksDeploy-ByoVnet.parameters.json" -p resourceName=$RESNAME --name $DEPNAME
             
             AKSNAME=$(az aks list -g Automation-Actions-AksDeployCI --query "[].[name]" -o tsv)
             APPMANIFEST='https://raw.githubusercontent.com/Gordonby/AKS-K8S-Lab-L200/master/azure-vote-all-in-one-redis.yaml'
