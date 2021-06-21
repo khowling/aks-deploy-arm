@@ -35,7 +35,7 @@ jobs:
           inlineScript: |
             RG='Automation-Actions-AksDeployCI'
             RESNAME='AksByo'
-            DEPNAME='Dep${{ GITHUB_RUN_NUMBER }}'
+            DEPNAME='Dep${{ GITHUB_ACTION }}'
             az deployment group create -f main.bicep -g $RG -p "AksDeploy-ByoVnet.parameters.json" -p resourceName=$RESNAME --name $DEPNAME
             
             AKSNAME=$(az aks list -g Automation-Actions-AksDeployCI --query "[].[name]" -o tsv)
