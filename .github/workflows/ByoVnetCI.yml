@@ -1,6 +1,10 @@
 name: ByoVnetCI
+# Credential prerequisites
+# 1. IAM Owner on the Resource Group you're deploying into
+# 2. IAM Owner on the Resource Group with vnet
 
-# Controls when the action will run. 
+
+
 on:
   push:
     branches: [ master ]
