@@ -15,7 +15,7 @@ In addition, the script has been designed to be incorporated it into your CI/CD 
 bicep build ./main.bicep  --outfile build/main.json
 ```
 
-### Click here to select your preffered AKS options, and generate the command line to deploy to Azure:
+### Click here to select your prefered AKS options, and generate the command line to deploy to Azure:
 
 [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://khowling.github.io/aks-deploy-wizard/)
 
