@@ -39,10 +39,10 @@ jobs:
             echo "Active deployments : $RUNCOUNT"
             
             echo 'Active deployment list'
-            az deployment group list -g $RG --query "[?properties.provisioningState=='Running'].[properties.provisioningState, name]
+            az deployment group list -g $RG --query "[?properties.provisioningState=='Running'].[properties.provisioningState, name]"
             
             echo 'Verbose deployment list'
-            az deployment group list -g $RG --query "[].[properties.provisioningState, name]
+            az deployment group list -g $RG --query "[].[properties.provisioningState, name]"
             
             echo "::set-output name=RUNCOUNT::$RUNCOUNT" #outputting for conditon
             
