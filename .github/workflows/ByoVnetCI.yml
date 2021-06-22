@@ -57,7 +57,7 @@ jobs:
             RG='Automation-Actions-AksDeployCI'
             RESNAME='AksByo'
             DEPNAME='Dep${{ github.run_number }}'
-            az group deployment validate -f main.bicep -g $RG -p "AksDeploy-ByoVnet.parameters.json" -p resourceName='$RESNAME' --verbose
+            az group deployment validate -f main.bicep -g $RG -p "AksDeploy-ByoVnet.parameters.json" -p resourceName=$RESNAME --verbose
             
       - name: Deploy AKS
         uses: Azure/cli@1.0.4
@@ -67,7 +67,7 @@ jobs:
             RG='Automation-Actions-AksDeployCI'
             RESNAME='AksByo'
             DEPNAME='Dep${{ github.run_number }}'
-            az deployment group create -f main.bicep -g $RG -p "AksDeploy-ByoVnet.parameters.json" -p resourceName='$RESNAME' --name $DEPNAME --verbose
+            az deployment group create -f main.bicep -g $RG -p "AksDeploy-ByoVnet.parameters.json" -p resourceName=$RESNAME --name $DEPNAME --verbose
             
             DEPSTATUS=$(az deployment operation group list --resource-group $RG --name $DEPNAME) #--query "[?properties.provisioningState=='Failed']"
             echo $DEPSTATUS
