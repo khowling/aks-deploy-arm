@@ -12,14 +12,17 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  BYO-Verify:
     runs-on: ubuntu-latest
-
+    env: 
+      RG: 'Automation-Actions-AksDeployCI'
     steps:
       - uses: actions/checkout@v2
 
-      - name: Run a one-line script
-        run: echo Byo Vnet Aks Bicep run
+      - name: Param check
+        run: |
+          RG='${{ env.RG }}'
+          echo 'RG is: $RG'
 
       - name: Azure Login
         uses: Azure/login@v1
@@ -29,17 +32,48 @@ jobs:
           environment: azurecloud
           allow-no-subscriptions: false
           
-      - name: Azure CLI Action
+      - name: Verify Active Deployments
+        id: activedeps
         uses: Azure/cli@1.0.4
+        with:
+          inlineScript: |
+            RG='Automation-Actions-AksDeployCI'
+            RUNCOUNT=$(az deployment group list -g $RG --query "[?properties.provisioningState=='Running'].[properties.provisioningState, name] | length(@)" -o tsv)
+            echo "Active deployments : $RUNCOUNT"
+            
+            echo 'Active deployment list'
+            az deployment group list -g $RG --query "[?properties.provisioningState=='Running'].[properties.provisioningState, name]"
+            
+            #echo 'Verbose deployment list'
+            #az deployment group list -g $RG --query "[].[properties.provisioningState, name]"
+            
+            echo "::set-output name=RUNCOUNT::$RUNCOUNT" #outputting for conditon
+            
+      - name: Validate AKS
+        uses: Azure/cli@1.0.4
+        #if: steps.activedeps.outputs.RUNCOUNT == 0
         with:
           inlineScript: |
             RG='Automation-Actions-AksDeployCI'
             RESNAME='AksByo'
             DEPNAME='Dep${{ github.run_number }}'
-            az deployment group create -f main.bicep -g $RG -p "AksDeploy-ByoVnet.parameters.json" -p resourceName=$RESNAME --name $DEPNAME
+            az group deployment validate -f main.bicep -g $RG -p "AksDeploy-ByoVnet.parameters.json" -p resourceName=$RESNAME --verbose
             
-            AKSNAME=$(az aks list -g Automation-Actions-AksDeployCI --query "[].[name]" -o tsv)
-            APPMANIFEST='https://raw.githubusercontent.com/Gordonby/AKS-K8S-Lab-L200/master/azure-vote-all-in-one-redis.yaml'
-            az aks get-credentials -g $RG -n $AKSNAME --admin
-            kubectl apply -f $APPMANIFEST
+      - name: Deploy AKS
+        uses: Azure/cli@1.0.4
+        if: steps.activedeps.outputs.RUNCOUNT == 0
+        with:
+          inlineScript: |
+            RG='Automation-Actions-AksDeployCI'
+            RESNAME='AksByo'
+            DEPNAME='Dep${{ github.run_number }}'
+            az deployment group create -f main.bicep -g $RG -p "AksDeploy-ByoVnet.parameters.json" -p resourceName=$RESNAME --name $DEPNAME --verbose
+            
+            DEPSTATUS=$(az deployment operation group list --resource-group $RG --name $DEPNAME) #--query "[?properties.provisioningState=='Failed']"
+            echo $DEPSTATUS
+            
+            #$AKSNAME=$(az aks list -g Automation-Actions-AksDeployCI --query "[].[name]" -o tsv)
+            #$APPMANIFEST='https://raw.githubusercontent.com/Gordonby/AKS-K8S-Lab-L200/master/azure-vote-all-in-one-redis.yaml'
+            #az aks get-credentials -g $RG -n $AKSNAME --admin
+            #kubectl apply -f $APPMANIFEST
 

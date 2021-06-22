@@ -16,7 +16,7 @@ resource existingAksSubnet 'Microsoft.Network/virtualNetworks/subnets@2020-08-01
 }
 
 resource existing_vnet_cont 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = {
-  name:  '${guid(resourceGroup().id, existingAksSubnetName)}'
+  name:  '${guid(principalId, existingAksSubnetName)}'
   scope: existingAksSubnet 
   properties: {
     roleDefinitionId: networkContributorRole
