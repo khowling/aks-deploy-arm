@@ -22,6 +22,9 @@ jobs:
     env: 
       RG: 'Automation-Actions-AksDeployCI'
       ParamFilePath: ".github/workflows_dep/AksDeploy-ByoVnet.parameters.json"
+      RESNAME: 'AksByo'
+      DEPNAME: 'Dep${{ github.run_number }}'
+      
     steps:
       - uses: actions/checkout@v2
 
@@ -31,6 +34,8 @@ jobs:
           echo "RG is: $RG"
           
           echo "Param file path is: ${{ env.ParamFilePath }}"
+          echo "Resource name is ${{ env.RESNAME }}
+          echo "Deployment name is ${{ env.DEPNAME }}
 
       - name: Dependency check
         shell: pwsh
@@ -57,7 +62,7 @@ jobs:
         uses: Azure/cli@1.0.4
         with:
           inlineScript: |
-            RG='Automation-Actions-AksDeployCI'
+            RG='${{ env.RG }}'
             RUNCOUNT=$(az deployment group list -g $RG --query "[?properties.provisioningState=='Running'].[properties.provisioningState, name] | length(@)" -o tsv)
             echo "Active deployments : $RUNCOUNT"
             
@@ -74,7 +79,7 @@ jobs:
         #if: steps.activedeps.outputs.RUNCOUNT == 0
         with:
           inlineScript: |
-            RG='Automation-Actions-AksDeployCI'
+            RG='${{ env.RG }}'
             RESNAME='AksByo'
             DEPNAME='Dep${{ github.run_number }}'
             az group deployment validate -f main.bicep -g $RG -p ".github/workflows_dep/AksDeploy-ByoVnet.parameters.json" -p resourceName=$RESNAME --verbose
@@ -85,7 +90,7 @@ jobs:
         if: steps.activedeps.outputs.RUNCOUNT == 0
         with:
           inlineScript: |
-            RG='Automation-Actions-AksDeployCI'
+            RG='${{ env.RG }}'
             RESNAME='AksByo'
             DEPNAME='Dep${{ github.run_number }}'
             az deployment group create -f main.bicep -g $RG -p ".github/workflows_dep/AksDeploy-ByoVnet.parameters.json" -p resourceName=$RESNAME --name $DEPNAME --verbose
