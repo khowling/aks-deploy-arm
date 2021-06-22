@@ -14,12 +14,14 @@ on:
 jobs:
   BYO-Verify:
     runs-on: ubuntu-latest
-
+    env: 
+      RG: 'Automation-Actions-AksDeployCI'
     steps:
       - uses: actions/checkout@v2
 
-      - name: Run a one-line script
-        run: echo Byo Vnet Aks Bicep run
+      - name: Param check
+        run: |
+          echo 'RG is: $RG'
 
       - name: Azure Login
         uses: Azure/login@v1
