@@ -16,14 +16,23 @@ jobs:
     runs-on: ubuntu-latest
     env: 
       RG: 'Automation-Actions-AksDeployCI'
+      ParamFilePath: ".github/workflows_dep/AksDeploy-ByoVnet.parameters.json"
     steps:
       - uses: actions/checkout@v2
 
       - name: Param check
         run: |
           RG='${{ env.RG }}'
-          echo 'RG is: $RG'
+          echo "RG is: $RG"
+          
+          echo "Param file path is: ${{ env.ParamFilePath }}"
 
+      - name: Dependency check
+        shell: pwsh
+        run: |
+          $paramFilePath="${{ env.ParamFilePath }}"
+          Test-Path $paramFilePath
+          
       - name: Azure Login
         uses: Azure/login@v1
         with:
