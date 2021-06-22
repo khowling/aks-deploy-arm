@@ -36,7 +36,8 @@ jobs:
           inlineScript: |
             RG='Automation-Actions-AksDeployCI'
             RUNCOUNT=$(az deployment group list -g Automation-Actions-AksDeployCI --query "[?properties.provisioningState=='Running'].[properties.provisioningState, name] | length(@)" -o tsv)
-            echo "::set-output name=RUNCOUNT::$RUNCOUNT"
+            echo "Active deployments : $RUNCOUNT"
+            echo "::set-output name=RUNCOUNT::$RUNCOUNT" #outputting for conditon
             
       - name: Deploy AKS
         uses: Azure/cli@1.0.4
