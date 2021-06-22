@@ -33,6 +33,7 @@ jobs:
       - name: Dependency check
         shell: pwsh
         run: |
+          Write-Output "Checking parameter file existance/contents"
           $paramFilePath="${{ env.ParamFilePath }}"
           Test-Path $paramFilePath
           
