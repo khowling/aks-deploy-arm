@@ -98,6 +98,8 @@ jobs:
       - name: AKS Workload
         uses: Azure/cli@1.0.4
         if: success()
+        env:
+          MANIFESTTESTURL: "https://raw.githubusercontent.com/Gordonby/AKS-K8S-Lab-L200/master/azure-vote-all-in-one-redis.yaml"
         with:
           inlineScript: |
             RG='${{ env.RG }}'
@@ -105,8 +107,9 @@ jobs:
             
             echo $AKSNAME
             
-            #$AKSNAME=$(az aks list -g Automation-Actions-AksDeployCI --query "[].[name]" -o tsv)
-            #$APPMANIFEST='https://raw.githubusercontent.com/Gordonby/AKS-K8S-Lab-L200/master/azure-vote-all-in-one-redis.yaml'
-            #az aks get-credentials -g $RG -n $AKSNAME --admin
-            #kubectl apply -f $APPMANIFEST
+            az aks get-credentials -n $AKSNAME -g $RG --admin
+            
+            echo $MANIFESTTESTURL
+            
+            kubectl apply -f $MANIFESTTESTURL
 
