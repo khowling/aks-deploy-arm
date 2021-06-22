@@ -48,7 +48,7 @@ jobs:
             RG='Automation-Actions-AksDeployCI'
             RESNAME='AksByo'
             DEPNAME='Dep${{ github.run_number }}'
-            az group deployment validate -f main.bicep -g $RG -p "AksDeploy-ByoVnet.parameters.json" -p resourceName=$RESNAME --name $DEPNAME --verbose
+            az group deployment validate -f main.bicep -g $RG -p "AksDeploy-ByoVnet.parameters.json" -p resourceName=$RESNAME --verbose
             
       - name: Deploy AKS
         uses: Azure/cli@1.0.4
