@@ -106,10 +106,11 @@ jobs:
             AKSNAME='${{ steps.deployAks.outputs.AKSNAME}}'
             
             echo $AKSNAME
-            
             az aks get-credentials -n $AKSNAME -g $RG --admin
             
-            echo $MANIFESTTESTURL
+            az aks install-cli
+            kubectl version
             
+            echo $MANIFESTTESTURL
             kubectl apply -f $MANIFESTTESTURL
 
