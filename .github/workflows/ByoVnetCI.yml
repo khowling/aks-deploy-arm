@@ -41,14 +41,13 @@ jobs:
             echo 'Active deployment list'
             az deployment group list -g $RG --query "[?properties.provisioningState=='Running'].[properties.provisioningState, name]"
             
-            echo 'Verbose deployment list'
-            az deployment group list -g $RG --query "[].[properties.provisioningState, name]"
+            #echo 'Verbose deployment list'
+            #az deployment group list -g $RG --query "[].[properties.provisioningState, name]"
             
             echo "::set-output name=RUNCOUNT::$RUNCOUNT" #outputting for conditon
             
       - name: Validate AKS
         uses: Azure/cli@1.0.4
-        #if: {{ success() && (steps.activedeps.outputs.RUNCOUNT == '0') }}
         if: steps.activedeps.outputs.RUNCOUNT == 0
         with:
           inlineScript: |
@@ -59,7 +58,6 @@ jobs:
             
       - name: Deploy AKS
         uses: Azure/cli@1.0.4
-        #if: {{ success() && (steps.activedeps.outputs.RUNCOUNT == '0') }}
         if: steps.activedeps.outputs.RUNCOUNT == 0
         with:
           inlineScript: |
