@@ -78,6 +78,7 @@ jobs:
             az group deployment validate -f main.bicep -g $RG -p ".github/workflows_dep/AksDeploy-ByoVnet.parameters.json" -p resourceName=$RESNAME --verbose
             
       - name: Deploy AKS
+        id:  deployAks
         uses: Azure/cli@1.0.4
         if: steps.activedeps.outputs.RUNCOUNT == 0
         with:
@@ -89,6 +90,20 @@ jobs:
             
             DEPSTATUS=$(az deployment operation group list --resource-group $RG --name $DEPNAME) #--query "[?properties.provisioningState=='Failed']"
             echo $DEPSTATUS
+            
+            #outputs
+            AKSNAME=$(az deployment group show -n Dep42 -g Automation-Actions-AksDeployCI --query "properties.outputs.aksClusterName.value" -o tsv)
+            echo "::set-output name=AKSNAME::$AKSNAME" #outputting for conditon
+            
+      - name: AKS Workload
+        uses: Azure/cli@1.0.4
+        if: success()
+        with:
+          inlineScript: |
+            RG='${{ env.RG }}'
+            AKSNAME='${{ steps.deployAks.outputs.AKSNAME}}'
+            
+            echo $AKSNAME
             
             #$AKSNAME=$(az aks list -g Automation-Actions-AksDeployCI --query "[].[name]" -o tsv)
             #$APPMANIFEST='https://raw.githubusercontent.com/Gordonby/AKS-K8S-Lab-L200/master/azure-vote-all-in-one-redis.yaml'
