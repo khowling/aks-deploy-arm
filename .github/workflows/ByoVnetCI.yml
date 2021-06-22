@@ -7,6 +7,9 @@ name: ByoVnetCI
 
 on:
   push:
+    branches: [ action-refactor ]
+  
+  pull_request:
     branches: [ master ]
 
   workflow_dispatch:
