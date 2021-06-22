@@ -2,8 +2,8 @@ param location string = resourceGroup().location
 param resourceName string
 
 //---------------------------------------------------------------------------------- User Identity
-var user_identity = create_vnet
-var user_identity_name = '${resourceName}uai'
+var user_identity = create_vnet || existing_vnet
+var user_identity_name = 'id-${resourceName}'
 
 resource uai 'Microsoft.ManagedIdentity/userAssignedIdentities@2018-11-30' = if (user_identity) {
   name: user_identity_name
@@ -29,8 +29,10 @@ module dnsZone './dnsZone.bicep' = if (!empty(dnsZoneId)) {
 //---------------------------------------------------------------------------------- ACR
 param registries_sku string = ''
 param ACRserviceEndpointFW string = '' // either IP, or 'vnetonly'
-var acrName = '${replace(resourceName, '-', '')}acr'
-resource acr 'Microsoft.ContainerRegistry/registries@2017-10-01' = if (!empty(registries_sku)) {
+
+var acrName = 'acr${replace(resourceName, '-', '')}'
+
+resource acr 'Microsoft.ContainerRegistry/registries@2020-11-01-preview' = if (!empty(registries_sku)) {
   name: acrName
   location: location
   sku: {
@@ -94,10 +96,14 @@ module aksnetcontrib './aksnetcontrib.bicep' = if (existing_vnet && user_identit
   scope: resourceGroup(existingAksVnetRG)
   params: {
     byoAKSSubnetId: byoAKSSubnetId
-    principalId: aks.properties.identityProfile.kubeletidentity.objectId //uai.properties.principalId
+    //principalId:  aks.properties.identityProfile.kubeletidentity.objectId 
+    principalId:  uai.properties.principalId
   }
 }
-
+output uaiPrincipalId string = uai.properties.principalId
+output aksIdentityType string = aks.identity.type
+//output aksIdentityPrincipalId string = aks.identity.principalId
+output aksClusterName string = aks.name
 
 param byoAGWSubnetId string = ''
 var existingAGWSubnetName = !empty(byoAGWSubnetId) ? split(byoAGWSubnetId, '/')[10] : ''
@@ -113,20 +119,15 @@ resource existingAGWSubnet 'Microsoft.Network/virtualNetworks/subnets@2020-08-01
 }
 var existingAGWSubnetAddPrefix=existingAGWSubnet.properties.addressPrefix
 
+
 param serviceEndpoints array = []
 
 var firewallIP = '10.241.130.4' // always .4
 
-var create_vnet = custom_vnet || azureFirewalls || !empty(serviceEndpoints)
+var create_vnet = existing_vnet ? false : custom_vnet || azureFirewalls || !empty(serviceEndpoints)
 
-param vnetName string = '${resourceName}-vnet'
+param vnetName string = 'vnet-${resourceName}'
 
-//var internalLBSubnet = {
-//  name: 'InternalLBSubnet'
-//  properties: {
-//    addressPrefix: vnetInternalLBSubnetAddressPrefix
-//  }
-//}
 var appgw_subnet_name = 'appgw-sn'
 var appgw_subnet = {
   name: appgw_subnet_name
@@ -329,6 +330,7 @@ resource fw 'Microsoft.Network/azureFirewalls@2019-04-01' = if (azureFirewalls) 
                 }
               ]
               targetFqdns: [
+                //'data.policy.${environment().suffixes.storage}'
                 'data.policy.core.windows.net'
                 'store.policy.core.windows.net'
                 'gov-prod-policy-data.trafficmanager.net'
@@ -408,12 +410,11 @@ resource fw 'Microsoft.Network/azureFirewalls@2019-04-01' = if (azureFirewalls) 
 //---------------------------------------------------------------------------------- AppGateway - Only if Existing/Custom VNET, otherwise addon will auto-create
 var appgwSubnetId = !empty(byoAGWSubnetId) ? byoAGWSubnetId : (create_vnet ? '${vnet.id}/subnets/${appgw_subnet_name}' : '') 
 
-module appGw './appgw.bicep' = if ((create_vnet && ingressApplicationGateway) || (existing_vnet && ingressApplicationGateway) ) {
+module appGw './appgw.bicep' = if ((create_vnet && ingressApplicationGateway) || (!empty(byoAGWSubnetId) && ingressApplicationGateway) ) {
   name: 'addAppGw'
   params: {
     resourceName: resourceName
     location: location
-    //appgw_subnet_name: !empty(existingAGWSubnetName) ? existingAGWSubnetName : appgw_subnet_name
     appgw_subnet_id: appgwSubnetId
   }
 }
@@ -447,7 +448,7 @@ param serviceCidr string = '10.0.0.0/16'
 param dnsServiceIP string = '10.0.0.10'
 param dockerBridgeCidr string = '172.17.0.1/16'
 
-var appgw_name = '${resourceName}-appgw'
+var appgw_name = 'agw-${resourceName}'
 
 var autoScale = agentCountMax > agentCount
 var aksSubnetId = existing_vnet ? byoAKSSubnetId : (create_vnet ? '${vnet.id}/subnets/${aks_subnet_name}' : null) 
@@ -502,7 +503,7 @@ var aks_properties1 = !empty(upgradeChannel) ? union(aks_properties_base, {
 }) : aks_properties_base
 
 var aks_addons = {}
-var aks_addons1 = ingressApplicationGateway ? union(aks_addons, create_vnet ? {
+var aks_addons1 = ingressApplicationGateway ? union(aks_addons, create_vnet || existing_vnet ? {
   /*
   
   COMMENTED OUT UNTIL addon supports creating Appgw in custom vnet.  Workaround is a follow up az cli command
@@ -570,7 +571,7 @@ var aks_identity_user = {
 }
 
 resource aks 'Microsoft.ContainerService/managedClusters@2021-02-01' = {
-  name: resourceName
+  name: 'aks-${resourceName}'
   location: location
   properties: aks_properties2
   identity: user_identity ? aks_identity_user : {
@@ -622,7 +623,7 @@ resource gitops 'Microsoft.KubernetesConfiguration/sourceControlConfigurations@2
 //---------------------------------------------------------------------------------- Container Insights
 
 param retentionInDays int = 30
-var aks_law_name = '${resourceName}-workspace'
+var aks_law_name = 'log-${resourceName}'
 resource aks_law 'Microsoft.OperationalInsights/workspaces@2020-08-01' = if (omsagent) {
   name: aks_law_name
   location: location
