@@ -116,3 +116,6 @@ jobs:
             echo $MANIFESTTESTURL
             kubectl apply -f $MANIFESTTESTURL
 
+            kubectl get po
+            kubectl get svc
+            kubectl get ingress
