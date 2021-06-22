@@ -39,6 +39,17 @@ jobs:
             echo "Active deployments : $RUNCOUNT"
             echo "::set-output name=RUNCOUNT::$RUNCOUNT" #outputting for conditon
             
+      - name: Validate AKS
+        uses: Azure/cli@1.0.4
+        #if: {{ success() && (steps.activedeps.outputs.RUNCOUNT == '0') }}
+        if: steps.activedeps.outputs.RUNCOUNT == 0
+        with:
+          inlineScript: |
+            RG='Automation-Actions-AksDeployCI'
+            RESNAME='AksByo'
+            DEPNAME='Dep${{ github.run_number }}'
+            az group deployment validate -f main.bicep -g $RG -p "AksDeploy-ByoVnet.parameters.json" -p resourceName=$RESNAME --name $DEPNAME --verbose
+            
       - name: Deploy AKS
         uses: Azure/cli@1.0.4
         #if: {{ success() && (steps.activedeps.outputs.RUNCOUNT == '0') }}
@@ -48,7 +59,7 @@ jobs:
             RG='Automation-Actions-AksDeployCI'
             RESNAME='AksByo'
             DEPNAME='Dep${{ github.run_number }}'
-            az deployment group create -f main.bicep -g $RG -p "AksDeploy-ByoVnet.parameters.json" -p resourceName=$RESNAME --name $DEPNAME
+            az deployment group create -f main.bicep -g $RG -p "AksDeploy-ByoVnet.parameters.json" -p resourceName=$RESNAME --name $DEPNAME --verbose
             
             $AKSNAME=$(az aks list -g Automation-Actions-AksDeployCI --query "[].[name]" -o tsv)
             $APPMANIFEST='https://raw.githubusercontent.com/Gordonby/AKS-K8S-Lab-L200/master/azure-vote-all-in-one-redis.yaml'
