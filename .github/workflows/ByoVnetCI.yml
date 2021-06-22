@@ -35,8 +35,10 @@ jobs:
         with:
           inlineScript: |
             RG='Automation-Actions-AksDeployCI'
-            RUNCOUNT=$(az deployment group list -g Automation-Actions-AksDeployCI --query "[?properties.provisioningState=='Running'].[properties.provisioningState, name] | length(@)" -o tsv)
+            RUNCOUNT=$(az deployment group list -g $RG --query "[?properties.provisioningState=='Running'].[properties.provisioningState, name] | length(@)" -o tsv)
             echo "Active deployments : $RUNCOUNT"
+            az deployment group list -g $RG --query "[?properties.provisioningState=='Running'].[properties.provisioningState, name]
+            
             echo "::set-output name=RUNCOUNT::$RUNCOUNT" #outputting for conditon
             
       - name: Validate AKS
