@@ -21,6 +21,7 @@ jobs:
 
       - name: Param check
         run: |
+          $RG = '${{ env.RG }}'
           echo 'RG is: $RG'
 
       - name: Azure Login
