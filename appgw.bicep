@@ -2,10 +2,8 @@ param resourceName string
 param location string
 param appgw_subnet_id string
 
-//---------------------------------------------------------------------------------- AppGateway - Only if Custom VNET, otherwise addon will auto-create
-
 resource appgwpip 'Microsoft.Network/publicIPAddresses@2020-07-01' = {
-  name: '${resourceName}-appgwpip'
+  name: 'pip-agw-${resourceName}'
   location: location
   sku: {
     name: 'Standard'
@@ -14,10 +12,13 @@ resource appgwpip 'Microsoft.Network/publicIPAddresses@2020-07-01' = {
     publicIPAllocationMethod: 'Static'
   }
 }
-resource appgw 'Microsoft.Network/applicationGateways@2020-07-01' = {
-  name: '${resourceName}-appgw'
-  location: location
 
+var appgwName = 'agw-${resourceName}'
+var appgwResourceId = resourceId('Microsoft.Network/applicationGateways', '${appgwName}')
+
+resource appgw 'Microsoft.Network/applicationGateways@2020-07-01' = {
+  name: appgwName
+  location: location
   properties: {
     sku: {
       name: 'WAF_v2'
@@ -74,10 +75,10 @@ resource appgw 'Microsoft.Network/applicationGateways@2020-07-01' = {
         name: 'hlisten'
         properties: {
           frontendIPConfiguration: {
-            id: concat(resourceId('Microsoft.Network/applicationGateways', '${resourceName}-appgw'), '/frontendIPConfigurations/appGatewayFrontendIP')
+            id: '${appgwResourceId}/frontendIPConfigurations/appGatewayFrontendIP'            
           }
           frontendPort: {
-            id: concat(resourceId('Microsoft.Network/applicationGateways', '${resourceName}-appgw'), '/frontendPorts/appGatewayFrontendPort')
+            id: '${appgwResourceId}/frontendPorts/appGatewayFrontendPort'
           }
           protocol: 'Http'
         }
@@ -89,13 +90,13 @@ resource appgw 'Microsoft.Network/applicationGateways@2020-07-01' = {
         properties: {
           ruleType: 'Basic'
           httpListener: {
-            id: concat(resourceId('Microsoft.Network/applicationGateways', '${resourceName}-appgw'), '/httpListeners/hlisten')
+            id: '${appgwResourceId}/httpListeners/hlisten'
           }
           backendAddressPool: {
-            id: concat(resourceId('Microsoft.Network/applicationGateways', '${resourceName}-appgw'), '/backendAddressPools/defaultaddresspool')
+            id: '${appgwResourceId}/backendAddressPools/defaultaddresspool'
           }
           backendHttpSettings: {
-            id: concat(resourceId('Microsoft.Network/applicationGateways', '${resourceName}-appgw'), '/backendHttpSettingsCollection/defaulthttpsetting')
+            id: '${appgwResourceId}/backendHttpSettingsCollection/defaulthttpsetting'
           }
         }
       }
