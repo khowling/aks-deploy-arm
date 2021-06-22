@@ -29,17 +29,29 @@ jobs:
           environment: azurecloud
           allow-no-subscriptions: false
           
-      - name: Azure CLI Action
+      - name: Verify Active Deployments
+        id: activedeps
         uses: Azure/cli@1.0.4
+        shell: pwsh
         with:
           inlineScript: |
-            RG='Automation-Actions-AksDeployCI'
-            RESNAME='AksByo'
-            DEPNAME='Dep${{ github.run_number }}'
+            $RG='Automation-Actions-AksDeployCI'
+            $RUNCOUNT=az deployment group list -g Automation-Actions-AksDeployCI --query "[?properties.provisioningState=='Running'].[properties.provisioningState, name] | length(@)" -o tsv
+            echo "::set-output name=run-count::$RUNCOUNT\n"
+            
+      - name: Deploy AKS
+        uses: Azure/cli@1.0.4
+        shell: pwsh
+        if: {{ success() && steps.activedeps.outputs.run-count == '0' }}
+        with:
+          inlineScript: |
+            $RG='Automation-Actions-AksDeployCI'
+            $RESNAME='AksByo'
+            $DEPNAME='Dep${{ github.run_number }}'
             az deployment group create -f main.bicep -g $RG -p "AksDeploy-ByoVnet.parameters.json" -p resourceName=$RESNAME --name $DEPNAME
             
-            AKSNAME=$(az aks list -g Automation-Actions-AksDeployCI --query "[].[name]" -o tsv)
-            APPMANIFEST='https://raw.githubusercontent.com/Gordonby/AKS-K8S-Lab-L200/master/azure-vote-all-in-one-redis.yaml'
+            $AKSNAME=$(az aks list -g Automation-Actions-AksDeployCI --query "[].[name]" -o tsv)
+            $APPMANIFEST='https://raw.githubusercontent.com/Gordonby/AKS-K8S-Lab-L200/master/azure-vote-all-in-one-redis.yaml'
             az aks get-credentials -g $RG -n $AKSNAME --admin
             kubectl apply -f $APPMANIFEST
 
