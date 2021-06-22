@@ -33,6 +33,11 @@ jobs:
           $paramFilePath="${{ env.ParamFilePath }}"
           Test-Path $paramFilePath
           
+          if (Test-Path $paramFilePath) {
+            $paramFileContent=Get-Content $paramFilePath
+            Write-Output $paramFileContent
+          }
+          
       - name: Azure Login
         uses: Azure/login@v1
         with:
