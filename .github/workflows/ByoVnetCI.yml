@@ -82,7 +82,7 @@ jobs:
             RG='${{ env.RG }}'
             RESNAME='AksByo'
             DEPNAME='Dep${{ github.run_number }}'
-            az group deployment validate -f bicep/main.bicep -g $RG -p ".github/workflows_dep/AksDeploy-ByoVnet.parameters.json" -p resourceName=$RESNAME byoAKSSubnetId=${{ secrets.ByoAksSubnetId }} byoAGWSubnetId=${{ secrets.ByoAgwSubnetId }} --verbose
+            az deployment group validate -f bicep/main.bicep -g $RG -p ".github/workflows_dep/AksDeploy-ByoVnet.parameters.json" -p resourceName=$RESNAME byoAKSSubnetId=${{ secrets.ByoAksSubnetId }} byoAGWSubnetId=${{ secrets.ByoAgwSubnetId }} --verbose
             
       - name: Deploy AKS
         id:  deployAks
