@@ -5,7 +5,7 @@ name: ByoVnetCI
 
 on:
   push:
-    branches: [ action-refactor ]
+    branches: [ action* ]
   
   pull_request:
     branches: [ master ]
@@ -82,7 +82,7 @@ jobs:
             RG='${{ env.RG }}'
             RESNAME='AksByo'
             DEPNAME='Dep${{ github.run_number }}'
-            az group deployment validate -f main.bicep -g $RG -p ".github/workflows_dep/AksDeploy-ByoVnet.parameters.json" -p resourceName=$RESNAME --verbose
+            az group deployment validate -f main.bicep -g $RG -p ".github/workflows_dep/AksDeploy-ByoVnet.parameters.json" -p resourceName=$RESNAME byoAKSSubnetId=${{ secrets.ByoAksSubnetId }} --verbose
             
       - name: Deploy AKS
         id:  deployAks
@@ -93,7 +93,7 @@ jobs:
             RG='${{ env.RG }}'
             RESNAME='AksByo'
             DEPNAME='Dep${{ github.run_number }}'
-            az deployment group create -f main.bicep -g $RG -p ".github/workflows_dep/AksDeploy-ByoVnet.parameters.json" -p resourceName=$RESNAME --name $DEPNAME --verbose
+            az deployment group create -f main.bicep -g $RG -p ".github/workflows_dep/AksDeploy-ByoVnet.parameters.json" -p resourceName=$RESNAME byoAKSSubnetId=${{ secrets.ByoAksSubnetId }} --name $DEPNAME --verbose
             
             DEPSTATUS=$(az deployment operation group list --resource-group $RG --name $DEPNAME) #--query "[?properties.provisioningState=='Failed']"
             echo $DEPSTATUS
