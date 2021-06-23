@@ -47,8 +47,11 @@
         "ingressApplicationGateway": {
             "value": true
         },
+        "byoAKSSubnetId": {
+            "value": "subnetResourceId overriden from GitHub secrets"
+        },
         "byoAGWSubnetId": {
-            "value": "/subscriptions/2d5bb2c8-8be8-4539-b48f-fbfd86852fa9/resourceGroups/Automation-Actions-AksDeployVnet/providers/Microsoft.Network/virtualNetworks/aksdeployvnet1/subnets/ag"
+            "value": "subnetResourceId overriden from GitHub secrets"
         },
         "serviceCidr" : {
             "value" : "172.10.0.0/16"
