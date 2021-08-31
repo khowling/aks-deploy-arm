@@ -1,4 +1,12 @@
 
+# Moved
+
+This project has moved to https://github.com/Azure/Aks-Construction
+
+Please go to the new repo to get the latest version!
+
+
+
 # AKS Deploy helper
 
 A comprehensive template that deploys a feature-complete, opinionated, AKS operating environment into your Azure subscription.
